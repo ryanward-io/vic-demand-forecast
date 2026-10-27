@@ -1,6 +1,7 @@
 {
  "start": "2025-10-01",
  "end": "2026-09-28",
+ "weather": "archived forecasts (Open-Meteo previous runs)",
  "models": [
   {
    "name": "naive_day",
@@ -13,9 +14,93 @@
   {
    "name": "mean_4w",
    "label": "Average of last 4 weeks"
+  },
+  {
+   "name": "mstl",
+   "label": "MSTL + ETS"
+  },
+  {
+   "name": "lightgbm",
+   "label": "LightGBM (calendar + weather)"
+  },
+  {
+   "name": "lstm",
+   "label": "LSTM (seq2seq)"
+  },
+  {
+   "name": "chronos2",
+   "label": "Chronos-2 (foundation model)"
+  },
+  {
+   "name": "ensemble",
+   "label": "Average of LightGBM and Chronos-2"
   }
  ],
  "scores": [
+  {
+   "model": "chronos2",
+   "lead": "today",
+   "mae": 247.19,
+   "rmse": 365.14,
+   "mape": 5.4,
+   "days": 363
+  },
+  {
+   "model": "chronos2",
+   "lead": "tomorrow",
+   "mae": 299.62,
+   "rmse": 433.81,
+   "mape": 6.48,
+   "days": 363
+  },
+  {
+   "model": "ensemble",
+   "lead": "today",
+   "mae": 224.3,
+   "rmse": 325.82,
+   "mape": 4.76,
+   "days": 363
+  },
+  {
+   "model": "ensemble",
+   "lead": "tomorrow",
+   "mae": 260.97,
+   "rmse": 374.99,
+   "mape": 5.51,
+   "days": 363
+  },
+  {
+   "model": "lightgbm",
+   "lead": "today",
+   "mae": 271.66,
+   "rmse": 383.89,
+   "mape": 5.61,
+   "days": 363
+  },
+  {
+   "model": "lightgbm",
+   "lead": "tomorrow",
+   "mae": 284.26,
+   "rmse": 405.22,
+   "mape": 5.88,
+   "days": 363
+  },
+  {
+   "model": "lstm",
+   "lead": "today",
+   "mae": 319.79,
+   "rmse": 426.89,
+   "mape": 6.57,
+   "days": 363
+  },
+  {
+   "model": "lstm",
+   "lead": "tomorrow",
+   "mae": 369.42,
+   "rmse": 481.03,
+   "mape": 7.57,
+   "days": 363
+  },
   {
    "model": "mean_4w",
    "lead": "today",
@@ -30,6 +115,22 @@
    "mae": 499.28,
    "rmse": 711.17,
    "mape": 10.9,
+   "days": 363
+  },
+  {
+   "model": "mstl",
+   "lead": "today",
+   "mae": 398.03,
+   "rmse": 627.77,
+   "mape": 8.84,
+   "days": 363
+  },
+  {
+   "model": "mstl",
+   "lead": "tomorrow",
+   "mae": 478.62,
+   "rmse": 698.22,
+   "mape": 10.54,
    "days": 363
   },
   {

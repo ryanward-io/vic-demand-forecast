@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Victorian Demand Forecast</title>
   <meta name="description" content="Half-hourly electricity demand forecasts for Victoria, refreshed daily, with an honest backtest of every model.">
-  <link rel="stylesheet" href="assets/app.css?v=202610281200">
-  <script src="assets/app.js?v=202610281200" type="module"></script>
+  <link rel="stylesheet" href="assets/app.css?v=202610281300">
+  <script src="assets/app.js?v=202610281300" type="module"></script>
 </head>
 <body>
   <header class="site">
@@ -36,6 +36,14 @@
       <p class="note">Every day in the window, each model stands at midnight with only the data known by then and forecasts the next 48 hours.
         After midnight it sees the weather <em>forecast</em> that existed at the time (archived by Open-Meteo), never the weather that actually happened,
         and models that learn were trained only on data from before the window. MAE is the average miss in megawatts; MAPE the same as a percentage. Lower is better.</p>
+      <h3 class="small-title">What the backtest shows (Oct 2025 – Sep 2026)</h3>
+      <ul class="note">
+        <li>Weather and calendar matter most: every model that uses them roughly halves the benchmarks' error.</li>
+        <li>Chronos-2, with no training on this data, ties with LightGBM trained on seven years of it (the difference is within noise).</li>
+        <li>Their average is the best forecast, by about 30 MW a day over either alone (95% bootstrap interval 23–43 MW), and better on about 70% of days.
+          The ensemble was chosen before the backtest was run, not picked for scoring well.</li>
+        <li>The LSTM beats the benchmarks but trails the trees, most of all in winter, which matches the literature: on one series of this size, boosted trees usually win.</li>
+      </ul>
     </section>
 
     <section class="panel" aria-labelledby="models-title">

@@ -1,0 +1,68 @@
+{
+ "start": "2025-10-01",
+ "end": "2026-09-28",
+ "models": [
+  {
+   "name": "naive_day",
+   "label": "Same as yesterday"
+  },
+  {
+   "name": "naive_week",
+   "label": "Same day last week"
+  },
+  {
+   "name": "mean_4w",
+   "label": "Average of last 4 weeks"
+  }
+ ],
+ "scores": [
+  {
+   "model": "mean_4w",
+   "lead": "today",
+   "mae": 499.38,
+   "rmse": 711.19,
+   "mape": 10.9,
+   "days": 363
+  },
+  {
+   "model": "mean_4w",
+   "lead": "tomorrow",
+   "mae": 499.28,
+   "rmse": 711.17,
+   "mape": 10.9,
+   "days": 363
+  },
+  {
+   "model": "naive_day",
+   "lead": "today",
+   "mae": 505.96,
+   "rmse": 751.34,
+   "mape": 11.05,
+   "days": 363
+  },
+  {
+   "model": "naive_day",
+   "lead": "tomorrow",
+   "mae": 657.87,
+   "rmse": 944.38,
+   "mape": 14.37,
+   "days": 363
+  },
+  {
+   "model": "naive_week",
+   "lead": "today",
+   "mae": 583.65,
+   "rmse": 875.52,
+   "mape": 12.84,
+   "days": 363
+  },
+  {
+   "model": "naive_week",
+   "lead": "tomorrow",
+   "mae": 584.07,
+   "rmse": 875.75,
+   "mape": 12.85,
+   "days": 363
+  }
+ ]
+}

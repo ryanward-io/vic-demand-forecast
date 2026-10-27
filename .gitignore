@@ -1,0 +1,14 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Downloaded data, forecast log, latest.json (lives on the Modal Volume in production)
+data/
+.pytest_cache/

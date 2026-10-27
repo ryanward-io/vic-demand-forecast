@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Victorian Demand Forecast</title>
+  <meta name="description" content="Half-hourly electricity demand forecasts for Victoria, refreshed daily, with an honest backtest of every model.">
+  <link rel="stylesheet" href="assets/app.css?v=202610281000">
+  <script src="assets/app.js?v=202610281000" type="module"></script>
+</head>
+<body>
+  <header class="site">
+    <a class="home" href="https://ryanward.dev/projects/">ryanward.dev / projects</a>
+  </header>
+
+  <main>
+    <h1>Victorian electricity demand forecast</h1>
+    <p class="lede">How much power will Victoria use today and tomorrow? A fresh forecast every night from AEMO data,
+      scored against what actually happened.</p>
+
+    <section class="panel" aria-labelledby="chart-title">
+      <h2 id="chart-title">Demand, last week and next two days</h2>
+      <p class="meta" id="meta">Loading the latest forecast…</p>
+      <ul class="legend" id="legend" aria-label="Legend"></ul>
+      <div class="chart" id="demand-chart"></div>
+      <h3 class="small-title">Melbourne temperature (°C)</h3>
+      <div class="chart short" id="temp-chart"></div>
+      <div class="tooltip" id="tooltip" role="status" hidden></div>
+    </section>
+
+    <section class="panel" aria-labelledby="bt-title">
+      <h2 id="bt-title">Backtest: how each model would have done</h2>
+      <p id="bt-meta" class="meta"></p>
+      <div class="table-wrap"><table id="bt-table"></table></div>
+      <p class="note">Every day in the window, each model stands at midnight with only the data known by then and forecasts the next 48 hours.
+        MAE is the average miss in megawatts; MAPE the same as a percentage. Lower is better.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="live-title">
+      <h2 id="live-title">Live track record</h2>
+      <p class="meta">Forecasts logged since the service started, scored once the actual demand is in.</p>
+      <div class="table-wrap"><table id="live-table"></table></div>
+    </section>
+  </main>
+
+  <footer class="site">
+    Demand: <a href="https://aemo.com.au/energy-systems/electricity/national-electricity-market-nem/data-nem/aggregated-data">AEMO aggregated price and demand data</a>, region VIC1.
+    Weather: <a href="https://open-meteo.com/">Open-Meteo</a> (CC BY 4.0). Times are NEM time (AEST, no daylight saving).
+  </footer>
+</body>
+</html>

@@ -1,0 +1,27 @@
+[project]
+name = "vicdemand"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Ryan Ward", email = "wardyryan1@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.162.0",
+    "httpx>=0.28.1",
+    "numpy>=2.5.4",
+    "pandas>=3.1.0",
+    "pyarrow>=26.0.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.7,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "modal>=1.6.3",
+    "pytest>=9.2.0",
+    "uvicorn>=0.54.0",
+]

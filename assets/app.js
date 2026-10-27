@@ -4,7 +4,10 @@
 const API = new URLSearchParams(location.search).get("api") || "https://ryanward-io--vic-demand-forecast.us-east.modal.run";
 const SVG = "http://www.w3.org/2000/svg";
 const MARGIN = { top: 8, right: 12, bottom: 22, left: 48 };
-const SERIES_VARS = ["--series-1", "--series-2", "--series-3"];  // fixed order: colour follows the model, never its rank
+// Colour follows the model, never its rank or which models are shown. The first three are shown by default.
+const COLOURS = { ensemble: "--series-1", lightgbm: "--series-2", chronos2: "--series-3", lstm: "--series-4", mstl: "--series-5",
+  mean_4w: "--series-6", naive_day: "--series-7", naive_week: "--series-8" };
+const SHOWN_BY_DEFAULT = new Set(["ensemble", "lightgbm", "chronos2"]);
 
 const $ = (id) => document.getElementById(id);
 const parse = (s) => new Date(s + ":00Z");  // NEM time, kept as "UTC" so the browser's own zone never shifts it
@@ -93,10 +96,12 @@ function scoreTable(table, scores, models) {
   const leads = ["today", "tomorrow"];
   const by = {};
   for (const s of scores) (by[s.model] ??= {})[s.lead] = s;
+  const avg = (m) => by[m.name] ? (by[m.name].today?.mae ?? 0) + (by[m.name].tomorrow?.mae ?? 0) : Infinity;
+  const sorted = [...models].sort((a, b) => avg(a) - avg(b));  // best first
   const best = Math.min(...Object.values(by).map((m) => m.tomorrow?.mae ?? Infinity));
   table.innerHTML = `<thead><tr><th>Model</th>${leads.map((l) => `<th>MAE ${l}</th><th>MAPE ${l}</th>`).join("")}<th>Days</th></tr></thead>`;
   const body = document.createElement("tbody");
-  for (const m of models) {
+  for (const m of sorted) {
     const r = by[m.name];
     if (!r) continue;
     const tr = document.createElement("tr");
@@ -116,15 +121,31 @@ async function main() {
 
   const toPts = (a) => a.map(([t, v]) => [parse(t), v]);
   const now = parse(latest.origin);
-  const series = [{ name: "actual", label: "Actual", colorVar: "--actual", points: toPts(latest.actual) }];
-  latest.models.forEach((m, i) => series.push({ name: m.name, label: m.label, colorVar: SERIES_VARS[i], points: toPts(latest.forecasts[m.name]), dashed: true }));
+  const series = [{ name: "actual", label: "Actual", colorVar: "--actual", points: toPts(latest.actual), shown: true }];
+  const order = Object.keys(COLOURS).filter((n) => latest.forecasts[n]);
+  for (const name of order) {
+    const m = latest.models.find((x) => x.name === name);
+    series.push({ name, label: m.label, colorVar: COLOURS[name], points: toPts(latest.forecasts[name]), dashed: true, shown: SHOWN_BY_DEFAULT.has(name) });
+  }
   const x0 = series[0].points[0][0], x1 = series[1].points.at(-1)[0];
 
   $("meta").textContent = `Issued ${new Date(latest.issued).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" })} (your time), from data up to ${fmtTime(now)} NEM time.`;
-  $("legend").innerHTML = series.map((s) => `<li><span class="key${s.dashed ? " dashed" : ""}" style="border-color:var(${s.colorVar})"></span>${s.label}</li>`).join("");
+  // The legend doubles as the show/hide control for each model.
+  $("legend").innerHTML = series.map((s, i) => {
+    const key = `<span class="key${s.dashed ? " dashed" : ""}" style="border-color:var(${s.colorVar})"></span>${s.label}`;
+    return i === 0 ? `<li><span class="static">${key}</span></li>` : `<li><button type="button" data-i="${i}" aria-pressed="${s.shown}">${key}</button></li>`;
+  }).join("");
+  $("legend").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button");
+    if (!b) return;
+    const s = series[b.dataset.i];
+    s.shown = !s.shown;
+    b.setAttribute("aria-pressed", s.shown);
+    draw();
+  });
 
   const draw = () => {
-    lineChart($("demand-chart"), series, { x0, x1, now, unit: "MW", fmt: fmtMW });
+    lineChart($("demand-chart"), series.filter((s) => s.shown), { x0, x1, now, unit: "MW", fmt: fmtMW });
     lineChart($("temp-chart"), [{ name: "temp", label: "Temperature", colorVar: "--temp", points: toPts(latest.temp) }],
       { x0, x1, now, unit: "C", fmt: (v) => `${v.toFixed(1)} °C` });
   };

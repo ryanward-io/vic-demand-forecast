@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Victorian Demand Forecast</title>
   <meta name="description" content="Half-hourly electricity demand forecasts for Victoria, refreshed daily, with an honest backtest of every model.">
-  <link rel="stylesheet" href="assets/app.css?v=202610281000">
-  <script src="assets/app.js?v=202610281000" type="module"></script>
+  <link rel="stylesheet" href="assets/app.css?v=202610281200">
+  <script src="assets/app.js?v=202610281200" type="module"></script>
 </head>
 <body>
   <header class="site">
@@ -21,7 +21,8 @@
     <section class="panel" aria-labelledby="chart-title">
       <h2 id="chart-title">Demand, last week and next two days</h2>
       <p class="meta" id="meta">Loading the latest forecast…</p>
-      <ul class="legend" id="legend" aria-label="Legend"></ul>
+      <ul class="legend" id="legend" aria-label="Legend: select a model to show or hide it"></ul>
+      <p class="hint">Select a model in the legend to show or hide it.</p>
       <div class="chart" id="demand-chart"></div>
       <h3 class="small-title">Melbourne temperature (°C)</h3>
       <div class="chart short" id="temp-chart"></div>
@@ -33,7 +34,28 @@
       <p id="bt-meta" class="meta"></p>
       <div class="table-wrap"><table id="bt-table"></table></div>
       <p class="note">Every day in the window, each model stands at midnight with only the data known by then and forecasts the next 48 hours.
-        MAE is the average miss in megawatts; MAPE the same as a percentage. Lower is better.</p>
+        After midnight it sees the weather <em>forecast</em> that existed at the time (archived by Open-Meteo), never the weather that actually happened,
+        and models that learn were trained only on data from before the window. MAE is the average miss in megawatts; MAPE the same as a percentage. Lower is better.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="models-title">
+      <h2 id="models-title">The models</h2>
+      <dl class="models">
+        <dt>Same as yesterday · Same day last week · Average of last 4 weeks</dt>
+        <dd>Benchmarks. Anything cleverer has to beat these to be worth running.</dd>
+        <dt>MSTL + ETS</dt>
+        <dd>Classical statistics: split the last 8 weeks into a trend plus daily and weekly cycles, then extend the trend with exponential smoothing. Demand only, no weather.</dd>
+        <dt>LightGBM (calendar + weather)</dt>
+        <dd>Gradient-boosted decision trees, the workhorse of forecasting competitions. Learns from 2019 onwards how demand on a given half-hour departs from its recent average,
+          given the weather forecast, solar radiation, day of week and public holidays.</dd>
+        <dt>LSTM (seq2seq)</dt>
+        <dd>A small recurrent neural network trained from scratch: one LSTM reads the last week, a second walks through the next two days using the weather forecast and calendar.</dd>
+        <dt>Chronos-2 (foundation model)</dt>
+        <dd>Amazon's pretrained time-series transformer (2025). It has never been trained on this data: it reads the last 12 weeks of demand with weather and holidays
+          and forecasts "zero-shot", the way a language model answers without fine-tuning.</dd>
+        <dt>Average of LightGBM and Chronos-2</dt>
+        <dd>A simple ensemble: the two make different kinds of mistakes, so their average is often better than either.</dd>
+      </dl>
     </section>
 
     <section class="panel" aria-labelledby="live-title">

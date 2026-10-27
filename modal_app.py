@@ -14,10 +14,32 @@ import modal
 
 app = modal.App("vic-demand-forecast")
 
-# Versions pinned to match uv.lock, so production runs what the tests ran.
-image = (
+# Two images (the software installed on the machine), versions pinned to match uv.lock so production runs what the tests ran.
+# The web endpoint only reads a JSON file, so it gets a small image and wakes up fast.
+web_image = (
     modal.Image.debian_slim(python_version="3.13")
-    .uv_pip_install("pandas==3.1.0", "pyarrow==26.0.0", "numpy==2.5.4", "httpx==0.28.1", "fastapi[standard]==0.162.0")
+    .uv_pip_install("fastapi[standard]==0.162.0")
+    .add_local_python_source("vicdemand")
+)
+
+HF_CACHE = "/models"
+
+
+def download_chronos():
+    from huggingface_hub import snapshot_download
+
+    snapshot_download("amazon/chronos-2")  # into $HF_HOME, where from_pretrained looks
+
+
+# The nightly job runs the models. PyTorch comes from its CPU-only index (no 2 GB of CUDA libraries: we don't use a GPU).
+# Chronos-2's weights (~480 MB) are downloaded once while the image is built, not on every run.
+job_image = (
+    modal.Image.debian_slim(python_version="3.13")
+    .uv_pip_install("torch==2.14.1", index_url="https://download.pytorch.org/whl/cpu")
+    .uv_pip_install("pandas==3.1.0", "pyarrow==26.0.0", "numpy==2.5.4", "httpx==0.28.1", "fastapi[standard]==0.162.0",
+                    "lightgbm==4.7.0", "statsforecast==2.0.1", "chronos-forecasting==2.3.2", "holidays==0.107")
+    .env({"HF_HOME": HF_CACHE, "HF_HUB_OFFLINE": "1"})  # offline: use the baked-in weights, never re-download at run time
+    .run_function(download_chronos, env={"HF_HUB_OFFLINE": "0"})
     .add_local_python_source("vicdemand")
 )
 
@@ -28,12 +50,14 @@ ROOT = Path("/data")
 
 
 @app.function(
-    image=image,
+    image=job_image,
     volumes={ROOT: volume},
+    cpu=4,  # the weekly LSTM retrain takes a few minutes on 4 cores; daily runs take about a minute
+    memory=4096,
     # 01:00 NEM time: AEMO's current-month file is updated just after midnight with the day that just finished.
     # "Australia/Brisbane" because the NEM runs on AEST all year (no daylight saving).
     schedule=modal.Cron("0 1 * * *", timezone="Australia/Brisbane"),
-    timeout=15 * 60,  # the first run downloads ~8 years of data (about a minute); later runs fetch one month
+    timeout=30 * 60,  # the first run downloads ~8 years of data and trains everything; later runs fetch one month
     retries=2,  # AEMO or Open-Meteo hiccups shouldn't cost a day's forecast
 )
 def daily():
@@ -45,7 +69,7 @@ def daily():
 
 
 @app.function(
-    image=image,
+    image=web_image,
     volumes={ROOT: volume},
     min_containers=0,  # scale to zero between visits, so idle time costs nothing
     max_containers=1,  # hard ceiling on parallel machines, which also caps the bill

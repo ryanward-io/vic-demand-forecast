@@ -1,2 +1,1 @@
-def hello() -> str:
-    return "Hello from vicdemand!"
+"""Victorian electricity demand forecasting."""

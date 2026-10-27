@@ -67,19 +67,33 @@ def load_demand(cache: Path, today: date | None = None) -> pd.Series:
     return s[~s.index.duplicated(keep="last")].dropna()
 
 
-def _open_meteo(url: str, params: dict) -> pd.Series:
-    r = httpx.get(url, params={"latitude": LAT, "longitude": LON, "hourly": "temperature_2m", "timezone": NEM_TZ, **params},
-                  timeout=60)
+# Weather inputs, as Open-Meteo names them -> our column names. Solar radiation matters because rooftop solar is
+# "behind the meter": a sunny day pushes midday grid demand down. Radiation is the mean over the preceding hour.
+WEATHER = {"temperature_2m": "temp", "shortwave_radiation": "solar"}
+PREVIOUS_RUNS_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
+FORECASTS_FROM = "2023-01-01"  # archived forecasts are complete from here
+
+
+def _open_meteo(url: str, params: dict, variables: dict[str, str] = WEATHER) -> pd.DataFrame:
+    r = httpx.get(url, params={"latitude": LAT, "longitude": LON, "hourly": ",".join(variables), "timezone": NEM_TZ, **params},
+                  timeout=120)
     r.raise_for_status()
     h = r.json()["hourly"]
-    return pd.Series(h["temperature_2m"], index=pd.to_datetime(h["time"]), name="temp", dtype=float)
+    return pd.DataFrame({ours: h[theirs] for theirs, ours in variables.items()}, index=pd.to_datetime(h["time"]), dtype=float)
 
 
-def load_temperature(cache: Path, today: date | None = None) -> pd.Series:
-    """Hourly temperature (deg C) from FIRST_MONTH to two days ahead, interpolated to half-hours.
+def _half_hourly(df: pd.DataFrame) -> pd.DataFrame:
+    df = df[~df.index.duplicated(keep="last")].sort_index().dropna()
+    df = df.resample("30min").interpolate()
+    df.index.name = "time"
+    return df
+
+
+def load_weather(cache: Path, today: date | None = None) -> pd.DataFrame:
+    """Hourly temperature (deg C) and solar radiation (W/m2) from FIRST_MONTH to two days ahead, interpolated to half-hours.
 
     Past values are reanalysis (what actually happened); the last ~10 days and the future come from the forecast API.
-    Note for backtests: using actual temperatures flatters any model that uses them, since a real forecast only has a weather forecast.
+    Backtests must not feed these past values to a model as if they were a forecast: see load_weather_forecasts.
     """
     today = today or date.today()
     cache.mkdir(parents=True, exist_ok=True)
@@ -87,16 +101,35 @@ def load_temperature(cache: Path, today: date | None = None) -> pd.Series:
     parts = []
     # Archive in yearly chunks; years that have fully passed the archive lag are cached.
     for year in range(int(FIRST_MONTH[:4]), split.year + 1):
-        path = cache / f"temp_{year}.parquet"
+        path = cache / f"weather_{year}.parquet"
         end = min(date(year, 12, 31), split)
         if path.exists() and end == date(year, 12, 31):
-            parts.append(pd.read_parquet(path)["temp"])
+            parts.append(pd.read_parquet(path))
             continue
-        s = _open_meteo(ARCHIVE_URL, {"start_date": f"{year}-01-01", "end_date": end.isoformat()})
+        df = _open_meteo(ARCHIVE_URL, {"start_date": f"{year}-01-01", "end_date": end.isoformat()})
         if end == date(year, 12, 31):
-            s.to_frame().to_parquet(path)
-        parts.append(s)
+            df.to_parquet(path)
+        parts.append(df)
     recent = _open_meteo(FORECAST_URL, {"past_days": ARCHIVE_LAG_DAYS + 2, "forecast_days": 3})
-    s = pd.concat(parts + [recent[recent.index.date > split]]).sort_index()
-    s = s[~s.index.duplicated(keep="last")].dropna()
-    return s.resample("30min").interpolate()
+    return _half_hourly(pd.concat(parts + [recent[recent.index.date > split]]))
+
+
+def load_weather_forecasts(cache: Path, today: date | None = None) -> dict[int, pd.DataFrame]:
+    """What the weather forecast *said* 1 and 2 days before each half-hour, from FORECASTS_FROM on: {1: df, 2: df}.
+
+    Open-Meteo's previous-runs archive keeps, for every hour, the value from the model run about N days earlier. A backtest
+    standing at midnight uses the 1-day-old forecast for "today" and the 2-day-old one for "tomorrow": both were issued
+    before midnight, so nothing leaks, and they are if anything a little staler than what a live forecast gets.
+    """
+    today = today or date.today()
+    path = cache / f"weather_forecasts_{today.strftime('%Y%m')}.parquet"
+    if path.exists():
+        df = pd.read_parquet(path)
+    else:
+        for old in cache.glob("weather_forecasts_*.parquet"):
+            old.unlink()
+        variables = {f"{theirs}_previous_day{d}": f"{ours}_d{d}" for d in (1, 2) for theirs, ours in WEATHER.items()}
+        df = _open_meteo(PREVIOUS_RUNS_URL, {"start_date": FORECASTS_FROM, "end_date": today.isoformat()}, variables)
+        df.to_parquet(path)
+    df = _half_hourly(df)
+    return {d: df[[f"{c}_d{d}" for c in WEATHER.values()]].set_axis(list(WEATHER.values()), axis=1) for d in (1, 2)}

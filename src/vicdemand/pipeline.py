@@ -41,7 +41,7 @@ def _fitted(m: Model, demand: pd.Series, weather: pd.DataFrame, folder: Path) ->
 
 
 def run_daily(root: Path, models: dict[str, Model] | None = None) -> dict:
-    models = models or all_models()
+    models = models or all_models(root / "cache")
     demand = data.load_demand(root / "cache")
     weather = data.load_weather(root / "cache")
     # Stand at the last midnight we have complete data for.
@@ -50,11 +50,19 @@ def run_daily(root: Path, models: dict[str, Model] | None = None) -> dict:
     models = {name: _fitted(m, known, weather, root / "fitted") if hasattr(m, "fit") else m for name, m in models.items()}
 
     issued = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    forecasts = {name: m.forecast(known, weather, origin, backtest.HORIZON) for name, m in models.items()}
+    forecasts = {}
+    for name, m in models.items():
+        # One model failing (e.g. NEMWEB down for AEMO's forecast) shouldn't cost the others their forecast.
+        try:
+            forecasts[name] = m.forecast(known, weather, origin, backtest.HORIZON)
+        except Exception as e:  # noqa: BLE001 - logged and skipped; tomorrow's run tries again
+            print(f"{name}: no forecast today ({type(e).__name__}: {e})")
+    if not forecasts:
+        raise RuntimeError("every model failed")
 
     new = pd.concat([pd.DataFrame({"model": name, "origin": origin, "time": f.index, "step": range(1, len(f) + 1),
                                    "forecast": f.to_numpy(), "issued": issued}) for name, f in forecasts.items()])
-    labels = {name: m.label for name, m in models.items()}
+    labels = {name: models[name].label for name in forecasts}
     for name, (label, members) in ENSEMBLES.items():
         if set(members) <= set(forecasts):
             e = ensemble(new, name, members)
@@ -82,6 +90,10 @@ def run_daily(root: Path, models: dict[str, Model] | None = None) -> dict:
         "actual": _points(demand.loc[start:]),
         "temp": _points(weather["temp"].loc[start:end]),
         "forecasts": {name: _points(f) for name, f in forecasts.items()},
+        # Forecast ranges (e.g. Chronos-2's 10-90% quantiles): {model: [[time, low, high], ...]}
+        "ranges": {name: [[t.strftime("%Y-%m-%dT%H:%M"), round(float(lo), 1), round(float(hi), 1)]
+                          for t, lo, hi in zip(f.index, f.attrs["low"], f.attrs["high"])]
+                   for name, f in forecasts.items() if "low" in f.attrs},
         "live_score": live,
     }
     (root / "latest.json").write_text(json.dumps(latest))

@@ -80,3 +80,36 @@ def test_daily_job_and_api(series, tmp_path, monkeypatch):
     assert body.status_code == 200 and body.json()["origin"] == latest["origin"]
     assert body.headers["access-control-allow-origin"] == "https://ryanward.dev"
     assert "access-control-allow-origin" not in client.get("/forecast", headers={"Origin": "https://evil.example"}).headers
+
+
+def test_aemo_csv_parser_reads_one_table():
+    from vicdemand.aemo import _table
+
+    text = "\n".join([
+        "C,NEMP.WORLD,PREDISPATCHIS,AEMO,PUBLIC,2026/10/27,23:31:51",
+        "I,PREDISPATCH,CASE_SOLUTION,1,PREDISPATCHSEQNO,RUNNO",
+        "D,PREDISPATCH,CASE_SOLUTION,1,2026102740,1",
+        "I,PREDISPATCH,REGION_SOLUTION,9,REGIONID,INTERVENTION,TOTALDEMAND,DATETIME",
+        'D,PREDISPATCH,REGION_SOLUTION,9,VIC1,0,5227.51,"2026/10/28 00:30:00"',
+        'D,PREDISPATCH,REGION_SOLUTION,9,NSW1,0,7000,"2026/10/28 00:30:00"',
+        "C,END OF REPORT,7",
+    ])
+    df = _table(text, "REGION_SOLUTION")
+    assert list(df["REGIONID"]) == ["VIC1", "NSW1"]
+    assert df.loc[0, "DATETIME"] == "2026/10/28 00:30:00" and float(df.loc[0, "TOTALDEMAND"]) == 5227.51
+
+
+def test_timestral_forecasts_a_range_without_peeking(series):
+    """The real model at its smallest size (21 MB), with a short context to match the 10-week test series."""
+    from vicdemand.models import Timestral
+
+    demand, weather = series
+    origin = pd.Timestamp("2026-02-01 00:00")
+    m = Timestral(model_id="mistralai/Timestral-5M", context=2 * WEEK)
+    f = m.forecast(demand, weather, origin, 2 * DAY)
+    assert len(f) == 2 * DAY and f.index[0] == origin + pd.Timedelta("30min")
+    assert (f.attrs["low"] <= f.to_numpy() + 1e-6).all() and (f.to_numpy() <= f.attrs["high"] + 1e-6).all()
+    assert abs(f.mean() - 5000) < 500  # it picked up the level of the series
+    tampered = demand.copy()
+    tampered.loc[origin + pd.Timedelta("30min"):] = 0
+    np.testing.assert_allclose(m.forecast(tampered, weather, origin, 2 * DAY).to_numpy(), f.to_numpy())

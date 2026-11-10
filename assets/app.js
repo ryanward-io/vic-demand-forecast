@@ -4,10 +4,14 @@
 const API = new URLSearchParams(location.search).get("api") || "https://ryanward-io--vic-demand-forecast.us-east.modal.run";
 const SVG = "http://www.w3.org/2000/svg";
 const MARGIN = { top: 8, right: 12, bottom: 22, left: 48 };
-// Colour follows the model, never its rank or which models are shown. The first three are shown by default.
-const COLOURS = { ensemble: "--series-1", lightgbm: "--series-2", chronos2: "--series-3", lstm: "--series-4", mstl: "--series-5",
-  mean_4w: "--series-6", naive_day: "--series-7", naive_week: "--series-8" };
-const SHOWN_BY_DEFAULT = new Set(["ensemble", "lightgbm", "chronos2"]);
+// Colour follows the model, never its rank or which models are shown. AEMO's forecast is the reference, so it gets a neutral grey.
+// The three benchmarks share one hue and differ by line pattern, so nine forecasts need only seven colours.
+const COLOURS = { aemo: "--reference", ensemble: "--series-1", lightgbm: "--series-2", chronos2: "--series-3", timestral: "--series-7",
+  lstm: "--series-4", mstl: "--series-5", mean_4w: "--series-6", naive_day: "--series-6", naive_week: "--series-6" };
+const DASHES = { mean_4w: "5 4", naive_day: "1.5 3", naive_week: "9 3 1.5 3" };
+const DASH = "5 4";  // every other forecast
+const SHOWN_BY_DEFAULT = new Set(["aemo", "ensemble", "lightgbm", "chronos2", "timestral"]);
+const RANGE_MODELS = { chronos2: "Chronos-2", timestral: "Timestral" };
 
 const $ = (id) => document.getElementById(id);
 const parse = (s) => new Date(s + ":00Z");  // NEM time, kept as "UTC" so the browser's own zone never shifts it
@@ -30,12 +34,12 @@ function niceTicks(lo, hi, n = 4) {
   return ticks;
 }
 
-// series: [{name, label, colorVar, points: [[Date, value]], dashed}]
-function lineChart(host, series, { x0, x1, now, unit, fmt }) {
+// series: [{name, label, colorVar, points: [[Date, value]], dash}]; bands: [{label, colorVar, points: [[Date, low, high]]}]
+function lineChart(host, series, { x0, x1, now, unit, fmt, bands = [] }) {
   host.innerHTML = "";
   const W = host.clientWidth, H = host.clientHeight;
   const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": host.dataset.label || "" }, host);
-  const vals = series.flatMap((s) => s.points.map((p) => p[1])).filter((v) => v != null);
+  const vals = series.flatMap((s) => s.points.map((p) => p[1])).concat(bands.flatMap((b) => b.points.flatMap((p) => [p[1], p[2]]))).filter((v) => v != null);
   let lo = Math.min(...vals), hi = Math.max(...vals);
   const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
   const ticks = niceTicks(lo, hi);
@@ -54,9 +58,15 @@ function lineChart(host, series, { x0, x1, now, unit, fmt }) {
   }
   el("line", { class: "now", x1: x(now), x2: x(now), y1: MARGIN.top, y2: H - MARGIN.bottom }, svg);
 
+  for (const band of bands) {  // a soft wash between the low and high edges, under the lines
+    const top = band.points.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[2]).toFixed(1)}`).join("");
+    const bottom = [...band.points].reverse().map((p) => `L${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("");
+    el("path", { class: "band", d: `${top}${bottom}Z`, fill: `var(${band.colorVar})` }, svg);
+  }
+
   for (const s of series) {
     const d = s.points.filter((p) => p[1] != null).map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("");
-    el("path", { class: "line", d, stroke: `var(${s.colorVar})`, ...(s.dashed ? { "stroke-dasharray": "5 4" } : {}) }, svg);
+    el("path", { class: "line", d, stroke: `var(${s.colorVar})`, ...(s.dash ? { "stroke-dasharray": s.dash } : {}) }, svg);
   }
 
   // Hover layer: crosshair + dots + tooltip at the nearest half-hour.
@@ -78,6 +88,10 @@ function lineChart(host, series, { x0, x1, now, unit, fmt }) {
       dots[i].setAttribute("cx", x(p[0])); dots[i].setAttribute("cy", y(p[1])); dots[i].setAttribute("visibility", "visible");
       rows.push(`<div class="row"><span class="key" style="background:var(${s.colorVar})"></span>${s.label}<span class="val">${fmt(p[1])}</span></div>`);
     });
+    for (const band of bands) {
+      const b = band.points.find((q) => +q[0] === +snapped);
+      if (b) rows.push(`<div class="row"><span class="key band-key" style="background:var(${band.colorVar})"></span>${band.label}<span class="val">${fmtMW(b[1])} – ${fmtMW(b[2])}</span></div>`);
+    }
     if (!rows.length) return hide();
     cross.setAttribute("x1", x(snapped)); cross.setAttribute("x2", x(snapped)); cross.setAttribute("visibility", "visible");
     tip.innerHTML = `<strong>${fmtTime(snapped)}</strong>${rows.join("")}`;
@@ -98,8 +112,10 @@ function scoreTable(table, scores, models) {
   for (const s of scores) (by[s.model] ??= {})[s.lead] = s;
   const avg = (m) => by[m.name] ? (by[m.name].today?.mae ?? 0) + (by[m.name].tomorrow?.mae ?? 0) : Infinity;
   const sorted = [...models].sort((a, b) => avg(a) - avg(b));  // best first
+  // The post-style headline: for every 100 MW the "same day last week" guess missed by, how much this model missed by.
+  const lazy = avg({ name: "naive_week" });
   const best = Math.min(...Object.values(by).map((m) => m.tomorrow?.mae ?? Infinity));
-  table.innerHTML = `<thead><tr><th>Model</th>${leads.map((l) => `<th>MAE ${l}</th><th>MAPE ${l}</th>`).join("")}<th>Days</th></tr></thead>`;
+  table.innerHTML = `<thead><tr><th>Model</th>${leads.map((l) => `<th>MAE ${l}</th><th>MAPE ${l}</th>`).join("")}<th>vs last week</th><th>Days</th></tr></thead>`;
   const body = document.createElement("tbody");
   for (const m of sorted) {
     const r = by[m.name];
@@ -107,7 +123,7 @@ function scoreTable(table, scores, models) {
     const tr = document.createElement("tr");
     if (r.tomorrow?.mae === best) tr.className = "best";
     tr.innerHTML = `<td>${label[m.name]}</td>` + leads.map((l) => `<td>${fmtMW(r[l]?.mae)}</td><td>${r[l] ? r[l].mape.toFixed(1) + "%" : "–"}</td>`).join("")
-      + `<td>${r.today?.days ?? "–"}</td>`;
+      + `<td>${Number.isFinite(lazy) ? Math.round((100 * avg(m)) / lazy) : "–"}</td><td>${r.today?.days ?? "–"}</td>`;
     body.appendChild(tr);
   }
   table.appendChild(body);
@@ -125,14 +141,14 @@ async function main() {
   const order = Object.keys(COLOURS).filter((n) => latest.forecasts[n]);
   for (const name of order) {
     const m = latest.models.find((x) => x.name === name);
-    series.push({ name, label: m.label, colorVar: COLOURS[name], points: toPts(latest.forecasts[name]), dashed: true, shown: SHOWN_BY_DEFAULT.has(name) });
+    series.push({ name, label: m.label, colorVar: COLOURS[name], points: toPts(latest.forecasts[name]), dash: DASHES[name] || DASH, shown: SHOWN_BY_DEFAULT.has(name) });
   }
   const x0 = series[0].points[0][0], x1 = series[1].points.at(-1)[0];
 
   $("meta").textContent = `Issued ${new Date(latest.issued).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" })} (your time), from data up to ${fmtTime(now)} NEM time.`;
   // The legend doubles as the show/hide control for each model.
   $("legend").innerHTML = series.map((s, i) => {
-    const key = `<span class="key${s.dashed ? " dashed" : ""}" style="border-color:var(${s.colorVar})"></span>${s.label}`;
+    const key = `<svg class="key" viewBox="0 0 22 4" aria-hidden="true"><line x1="0" y1="2" x2="22" y2="2" stroke="var(${s.colorVar})"${s.dash ? ` stroke-dasharray="${s.dash}"` : ""}/></svg>${s.label}`;
     return i === 0 ? `<li><span class="static">${key}</span></li>` : `<li><button type="button" data-i="${i}" aria-pressed="${s.shown}">${key}</button></li>`;
   }).join("");
   $("legend").addEventListener("click", (ev) => {
@@ -144,8 +160,20 @@ async function main() {
     draw();
   });
 
+  // Optional uncertainty ranges (the foundation models' 10-90% quantiles), off by default.
+  const bands = Object.entries(RANGE_MODELS).filter(([n]) => latest.ranges?.[n]).map(([n, short]) => ({
+    name: n, short, label: `${short} 80% range`, colorVar: COLOURS[n], points: latest.ranges[n].map(([t, lo, hi]) => [parse(t), lo, hi]) }));
+  if (bands.length) {
+    $("range-toggle").hidden = false;
+    $("range-toggle").insertAdjacentHTML("beforeend", bands.map((b) =>
+      `<label class="check"><input type="checkbox" data-band="${b.name}"> ${b.short}</label>`).join(""));
+    $("range-toggle").addEventListener("change", () => draw());
+  }
+  const shownBands = () => bands.filter((b) => $("range-toggle").querySelector(`[data-band="${b.name}"]`).checked);
+
   const draw = () => {
-    lineChart($("demand-chart"), series.filter((s) => s.shown), { x0, x1, now, unit: "MW", fmt: fmtMW });
+    lineChart($("demand-chart"), series.filter((s) => s.shown),
+      { x0, x1, now, unit: "MW", fmt: fmtMW, bands: shownBands() });
     lineChart($("temp-chart"), [{ name: "temp", label: "Temperature", colorVar: "--temp", points: toPts(latest.temp) }],
       { x0, x1, now, unit: "C", fmt: (v) => `${v.toFixed(1)} °C` });
   };
@@ -158,6 +186,12 @@ async function main() {
   if (bt) {
     $("bt-meta").textContent = `${bt.start} to ${bt.end}, one forecast per day.`;
     scoreTable($("bt-table"), bt.scores, bt.models);
+    const notes = Object.entries(RANGE_MODELS).map(([n, short]) => {
+      const r = Object.fromEntries((bt.ranges || []).filter((x) => x.model === n).map((x) => [x.lead, x]));
+      return r.today && r.tomorrow ? `${short}'s range held the actual demand ${r.today.inside_pct.toFixed(0)}% of the time today and `
+        + `${r.tomorrow.inside_pct.toFixed(0)}% tomorrow, and was ${fmtMW(r.today.width_mw)} wide on average today, ${fmtMW(r.tomorrow.width_mw)} tomorrow.` : null;
+    }).filter(Boolean);
+    if (notes.length) $("range-note").textContent = `80% ranges: a well-calibrated one holds the actual about 80% of the time. ${notes.join(" ")}`;
   }
   if (latest.live_score.length) scoreTable($("live-table"), latest.live_score, latest.models);
   else $("live-table").outerHTML = `<p class="meta">Nothing to score yet: the first forecasts are still in the future.</p>`;

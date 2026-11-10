@@ -17,6 +17,7 @@ dependencies = [
     "pandas>=3.1.0",
     "pyarrow>=26.0.0",
     "statsforecast>=2.0.1",
+    "timestral",
     "torch>=2.14.1",
 ]
 
@@ -39,3 +40,4 @@ explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
+timestral = { git = "https://github.com/mistralai/timestral.git", rev = "a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff" }

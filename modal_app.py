@@ -25,21 +25,27 @@ web_image = (
 HF_CACHE = "/models"
 
 
-def download_chronos():
+TIMESTRAL = "git+https://github.com/mistralai/timestral.git@a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff"  # pinned, as in uv.lock
+
+
+def download_weights():
     from huggingface_hub import snapshot_download
 
-    snapshot_download("amazon/chronos-2")  # into $HF_HOME, where from_pretrained looks
+    # Into $HF_HOME, where from_pretrained looks.
+    snapshot_download("amazon/chronos-2")
+    snapshot_download("mistralai/Timestral-209M")  # Modified MIT licence, (c) 2026 Mistral AI
 
 
 # The nightly job runs the models. PyTorch comes from its CPU-only index (no 2 GB of CUDA libraries: we don't use a GPU).
-# Chronos-2's weights (~480 MB) are downloaded once while the image is built, not on every run.
+# The foundation models' weights (Chronos-2 ~480 MB, Timestral ~840 MB) are downloaded once while the image is built, not on every run.
 job_image = (
     modal.Image.debian_slim(python_version="3.13")
+    .apt_install("git")  # Timestral is installed from Mistral's GitHub repo
     .uv_pip_install("torch==2.14.1", index_url="https://download.pytorch.org/whl/cpu")
     .uv_pip_install("pandas==3.1.0", "pyarrow==26.0.0", "numpy==2.5.4", "httpx==0.28.1", "fastapi[standard]==0.162.0",
-                    "lightgbm==4.7.0", "statsforecast==2.0.1", "chronos-forecasting==2.3.2", "holidays==0.107")
+                    "lightgbm==4.7.0", "statsforecast==2.0.1", "chronos-forecasting==2.3.2", "holidays==0.107", TIMESTRAL)
     .env({"HF_HOME": HF_CACHE, "HF_HUB_OFFLINE": "1"})  # offline: use the baked-in weights, never re-download at run time
-    .run_function(download_chronos, env={"HF_HUB_OFFLINE": "0"})
+    .run_function(download_weights, env={"HF_HUB_OFFLINE": "0"})
     .add_local_python_source("vicdemand")
 )
 

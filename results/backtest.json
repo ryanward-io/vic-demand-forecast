@@ -32,11 +32,35 @@
    "label": "Chronos-2 (foundation model)"
   },
   {
+   "name": "timestral",
+   "label": "Timestral (foundation model)"
+  },
+  {
+   "name": "aemo",
+   "label": "AEMO's own forecast"
+  },
+  {
    "name": "ensemble",
    "label": "Average of LightGBM and Chronos-2"
   }
  ],
  "scores": [
+  {
+   "model": "aemo",
+   "lead": "today",
+   "mae": 186.88,
+   "rmse": 272.61,
+   "mape": 4.04,
+   "days": 363
+  },
+  {
+   "model": "aemo",
+   "lead": "tomorrow",
+   "mae": 202.81,
+   "rmse": 287.6,
+   "mape": 4.39,
+   "days": 363
+  },
   {
    "model": "chronos2",
    "lead": "today",
@@ -56,33 +80,33 @@
   {
    "model": "ensemble",
    "lead": "today",
-   "mae": 224.3,
-   "rmse": 325.82,
-   "mape": 4.76,
+   "mae": 225.4,
+   "rmse": 327.05,
+   "mape": 4.85,
    "days": 363
   },
   {
    "model": "ensemble",
    "lead": "tomorrow",
-   "mae": 260.97,
-   "rmse": 374.99,
-   "mape": 5.51,
-   "days": 363
-  },
-  {
-   "model": "lightgbm",
-   "lead": "today",
-   "mae": 271.66,
-   "rmse": 383.89,
+   "mae": 262.33,
+   "rmse": 375.6,
    "mape": 5.61,
    "days": 363
   },
   {
    "model": "lightgbm",
+   "lead": "today",
+   "mae": 255.54,
+   "rmse": 363.84,
+   "mape": 5.4,
+   "days": 363
+  },
+  {
+   "model": "lightgbm",
    "lead": "tomorrow",
-   "mae": 284.26,
-   "rmse": 405.22,
-   "mape": 5.88,
+   "mae": 270.76,
+   "rmse": 385.28,
+   "mape": 5.72,
    "days": 363
   },
   {
@@ -164,6 +188,48 @@
    "rmse": 875.75,
    "mape": 12.85,
    "days": 363
+  },
+  {
+   "model": "timestral",
+   "lead": "today",
+   "mae": 242.94,
+   "rmse": 355.11,
+   "mape": 5.23,
+   "days": 363
+  },
+  {
+   "model": "timestral",
+   "lead": "tomorrow",
+   "mae": 296.81,
+   "rmse": 416.28,
+   "mape": 6.38,
+   "days": 363
+  }
+ ],
+ "ranges": [
+  {
+   "model": "chronos2",
+   "lead": "today",
+   "inside_pct": 74.1,
+   "width_mw": 666.5999755859375
+  },
+  {
+   "model": "chronos2",
+   "lead": "tomorrow",
+   "inside_pct": 73.5,
+   "width_mw": 795.0
+  },
+  {
+   "model": "timestral",
+   "lead": "today",
+   "inside_pct": 77.3,
+   "width_mw": 698.5
+  },
+  {
+   "model": "timestral",
+   "lead": "tomorrow",
+   "inside_pct": 78.9,
+   "width_mw": 905.9000244140625
   }
  ]
 }

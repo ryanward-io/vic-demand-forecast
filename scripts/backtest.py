@@ -42,6 +42,8 @@ for name, (label, members) in ENSEMBLES.items():
         results = pd.concat([results, ensemble(results, name, members)])
 table = backtest.score(results)
 print(table.to_string())
+ranges = backtest.coverage(results) if "low" in results else pd.DataFrame()
+print(ranges.to_string())
 
 labels = {m.name: m.label for m in MODELS.values()} | {n: label for n, (label, _) in ENSEMBLES.items()}
 present = [m for m in labels if m in set(results["model"])]
@@ -51,4 +53,5 @@ out.mkdir(exist_ok=True)
     "start": args.start, "end": args.end, "weather": "archived forecasts (Open-Meteo previous runs)",
     "models": [{"name": m, "label": labels[m]} for m in present],
     "scores": table.reset_index().to_dict("records"),
+    "ranges": ranges.reset_index().to_dict("records"),
 }, indent=1))

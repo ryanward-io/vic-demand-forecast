@@ -44,7 +44,7 @@ class Seq2Seq(nn.Module):
 @dataclass
 class LSTM:
     name: str = "lstm"
-    label: str = "LSTM (seq2seq)"
+    label: str = "LSTM (neural network)"
     epochs: int = 8
     every_hours: int = 3  # training origins: every 3 hours, not just midnight, for ~8x more examples
     net: Seq2Seq | None = None

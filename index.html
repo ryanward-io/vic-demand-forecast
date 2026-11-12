@@ -1,12 +1,24 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-AU">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Victorian Demand Forecast</title>
-  <meta name="description" content="Half-hourly electricity demand forecasts for Victoria, refreshed daily, with an honest backtest of every model.">
-  <link rel="stylesheet" href="assets/app.css?v=202611101200">
-  <script src="assets/app.js?v=202611101200" type="module"></script>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://ryanward-io--vic-demand-forecast.us-east.modal.run http://localhost:8002 http://127.0.0.1:8002; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>Victorian electricity demand forecast: nine models vs AEMO</title>
+  <meta name="description" content="Half-hourly electricity demand forecasts for Victoria, refreshed nightly, with a year-long backtest of every model against AEMO's own.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Victorian electricity demand forecast: nine models vs AEMO">
+  <meta property="og:description" content="Half-hourly electricity demand forecasts for Victoria, refreshed nightly, with a year-long backtest of every model against AEMO's own.">
+  <meta property="og:url" content="https://ryanward.dev/vic-demand-forecast/">
+  <meta property="og:image" content="https://ryanward.dev/vic-demand-forecast/assets/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="A week of Victorian electricity demand, then two days of forecasts from several models, including AEMO's.">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <link rel="stylesheet" href="assets/app.css?v=202611121800">
+  <script src="assets/app.js?v=202611121800" type="module"></script>
 </head>
 <body>
   <header class="site">
@@ -15,74 +27,138 @@
 
   <main>
     <h1>Victorian electricity demand forecast</h1>
-    <p class="lede">How much power will Victoria use today and tomorrow? A fresh forecast every night from AEMO data,
-      scored against what actually happened.</p>
+    <p class="lede">Every night, nine models forecast Victoria's electricity demand for the next 48 hours, from rules of thumb to AI that has
+      never seen this data. All are scored against what happened, and against AEMO's own forecast.</p>
 
     <section class="panel" aria-labelledby="chart-title">
       <h2 id="chart-title">Demand, last week and next two days</h2>
-      <p class="meta" id="meta">Loading the latest forecast…</p>
-      <ul class="legend" id="legend" aria-label="Legend: select a model to show or hide it"></ul>
-      <p class="hint">Select a model in the legend to show or hide it.</p>
-      <div class="ranges" id="range-toggle" role="group" aria-label="Uncertainty ranges" hidden><span>Show 80% range:</span></div>
-      <div class="chart" id="demand-chart"></div>
-      <h3 class="small-title">Melbourne temperature (°C)</h3>
-      <div class="chart short" id="temp-chart"></div>
-      <div class="tooltip" id="tooltip" role="status" hidden></div>
+      <p class="meta" id="meta" role="status">Loading the latest forecast…</p>
+      <p class="summary" id="summary" hidden></p>
+      <p class="hint" id="howto" hidden>Black is what Victoria actually used; the other lines are forecasts for the shaded days. Hover or tap to read them.
+        Times are AEST, an hour behind Melbourne clocks in daylight saving.</p>
+      <div class="chart" id="demand-chart" data-label="Line chart of Victorian electricity demand for the past week and each model's forecast for the next two days">
+        <p class="placeholder" id="chart-status">Loading…</p>
+      </div>
+      <div class="controls" id="controls" hidden>
+        <ul class="legend" id="legend" aria-label="Models: select one to show or hide it"></ul>
+        <div class="legend-actions">
+          <button type="button" class="link" id="more" aria-expanded="false" aria-controls="legend">More models</button>
+          <button type="button" class="link" id="reset">Reset</button>
+        </div>
+        <div class="ranges" id="range-toggle" role="group" aria-labelledby="range-label" hidden>
+          <span id="range-label">Show the likely range (80%):</span>
+        </div>
+      </div>
+      <div id="temp-block" hidden>
+        <h3 class="small-title">Melbourne temperature (°C)</h3>
+        <div class="chart short" id="temp-chart" data-label="Line chart of Melbourne temperature, observed then forecast"></div>
+      </div>
+      <details id="forecast-details" hidden>
+        <summary>The forecast as a table</summary>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Hourly forecast table">
+          <table id="forecast-table"></table>
+        </div>
+      </details>
+      <div class="tooltip" id="tooltip" aria-hidden="true" hidden></div>
     </section>
 
+    <div class="why">
+      <section aria-labelledby="why-1">
+        <h2 id="why-1">Why forecast demand?</h2>
+        <p>Power has to be generated the moment it's used, so the grid needs to know a day or two ahead how much Victoria will want.
+          Guess low and it scrambles for expensive power; guess high and it pays for generators it didn't need. Heat, cold snaps and
+          rooftop solar all move the number.</p>
+      </section>
+      <section aria-labelledby="why-2">
+        <h2 id="why-2">What's being tested</h2>
+        <p>Whether new AI forecasting models, trained on huge numbers of other series but never this one, can match models built for the job,
+          and how close any of them get to AEMO, which runs the grid.</p>
+      </section>
+      <section aria-labelledby="why-3">
+        <h2 id="why-3">Short version</h2>
+        <p>AEMO is still best, off by about <span data-fig="mape:aemo">4</span>% on average. The best of mine is off by about
+          <span data-fig="mape:ensemble">5</span>%. Chronos-2, an AI model that has never seen this data, ties with a model trained on seven years of it.</p>
+      </section>
+    </div>
+
     <section class="panel" aria-labelledby="bt-title">
-      <h2 id="bt-title">Backtest: how each model would have done</h2>
-      <p id="bt-meta" class="meta"></p>
-      <div class="table-wrap"><table id="bt-table"></table></div>
-      <p class="note" id="range-note"></p>
-      <p class="note">Every day in the window, each model stands at midnight with only the data known by then and forecasts the next 48 hours.
-        After midnight it sees the weather <em>forecast</em> that existed at the time (archived by Open-Meteo), never the weather that actually happened,
-        and models that learn are retrained at the start of each month on data up to that day (live, they retrain weekly). MAE is the average miss in megawatts; MAPE the same as a percentage. "vs last week" compares each model with the lazy guess that this week repeats last week:
-        for every 100 MW that guess missed by over the two days, how many the model missed by. Lower is better.</p>
-      <h3 class="small-title">What the backtest shows (Oct 2025 – Sep 2026)</h3>
-      <ul class="note">
-        <li>Weather and calendar matter most: every model that uses them roughly halves the benchmarks' error.</li>
-        <li>Chronos-2, with no training on this data, ties with LightGBM trained on seven years of it (the difference is within noise).</li>
-        <li>Their average is the best forecast, by about 30 MW a day over either alone (95% bootstrap interval 23–43 MW), and better on about 70% of days.
-          The ensemble was chosen before the backtest was run, not picked for scoring well.</li>
-        <li>Timestral, Mistral's newer foundation model, also ties: 3 MW a day better than Chronos-2 (95% interval 13 better to 6 worse) and 7 MW worse
-          than LightGBM (5 better to 18 worse). Its errors track Chronos-2's closely, so swapping it into the average gains only about 4 MW a day, also within noise.
-          Where it is ahead is its range, which held the actual demand about 78% of the time against Chronos-2's 74%.</li>
-        <li>The LSTM beats the benchmarks but trails the trees, most of all in winter, which matches the literature: on one series of this size, boosted trees usually win.</li>
+      <h2 id="bt-title">How each model did over the past year</h2>
+      <p class="meta">A backtest replays the past. On every day from <span id="bt-start">1 Oct 2025</span> to <span id="bt-end">28 Sep 2026</span>,
+        each model forecast the next two days using only what was known at midnight, and was then checked against what happened.</p>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Backtest scores table"><table id="bt-table"></table></div>
+      <p class="scroll-hint" hidden>Scroll the table sideways for more →</p>
+      <p class="note">Average miss is how far the forecast was from actual demand, in megawatts (MW) and as a percentage.
+        "vs last week" compares each model with the lazy guess that this week repeats last week: 50 means it missed by half as much. Lower is better.
+        <span id="bt-gaps"></span></p>
+
+      <h3 class="small-title">What it shows</h3>
+      <ul class="findings">
+        <li>AEMO's own forecast is still the one to beat: off by <span data-fig="mape:aemo:today">4.0</span>% today and
+          <span data-fig="mape:aemo:tomorrow">4.4</span>% tomorrow, against <span data-fig="mape:ensemble:today">4.9</span>% and
+          <span data-fig="mape:ensemble:tomorrow">5.6</span>% for the best of mine, which works from one Melbourne weather point and public data.</li>
+        <li>Weather and calendar matter most. LightGBM and the average roughly halve the benchmarks' error; the LSTM cuts it by about
+          <span data-fig="cut:lstm">a third</span>.</li>
+        <li>Chronos-2, with no training on this data, ties with LightGBM trained on seven years of it.</li>
+        <li>Their average is the best of mine: its average miss is about <span data-fig="cmp:ensemble:lightgbm">19</span> MW smaller than LightGBM's
+          and <span data-fig="cmp:ensemble:chronos2">30</span> MW smaller than Chronos-2's, and it's closer on about
+          <span data-fig="cmp:ensemble:chronos2:pct">70</span>% of days. I picked the pairing before running the backtest, not for scoring well.</li>
+        <li>Timestral, Mistral's newer AI model, also ties with both. Its mistakes look a lot like Chronos-2's, so swapping it into the average gains only
+          about <span data-fig="cmp:ensemble_timestral:ensemble">4</span> MW. Its likely range is better (it held the actual demand
+          <span data-fig="range:timestral">78</span>% of the time, against Chronos-2's <span data-fig="range:chronos2">74</span>%), but it's also wider.</li>
+        <li id="lstm-finding">The LSTM beats the benchmarks but trails the trees, most of all in winter, which is what I'd expect: on one series of this size, boosted trees usually win.</li>
       </ul>
+
+      <details>
+        <summary>How the backtest works</summary>
+        <p class="note">Each model stands at midnight and forecasts the next 48 half-hours. After midnight it sees the weather <em>forecast</em> that existed
+          at the time (archived by Open-Meteo), never the weather that actually happened. Models that learn are retrained at the start of each month
+          on data up to that day (live, they retrain weekly). Two models "tie" when a 95% bootstrap interval for the difference, resampling whole days,
+          includes zero.</p>
+        <p class="note">AEMO isn't quite like for like. In the backtest my models used weather forecasts made a day or two earlier, while AEMO used its
+          latest. Its forecast also joins two reports (pre-dispatch for the first 28 hours, then ST PASA), which may not define demand identically:
+          its average error shifts by about 70 MW where they meet.</p>
+        <p class="note" id="range-note"></p>
+        <p class="note" id="bt-run"></p>
+      </details>
     </section>
 
     <section class="panel" aria-labelledby="models-title">
       <h2 id="models-title">The models</h2>
+      <p class="meta">From simplest to most complex. The simple ones look only at past demand; the rest also get the weather forecast and the calendar.</p>
       <dl class="models">
         <dt>Same as yesterday · Same day last week · Average of last 4 weeks</dt>
         <dd>Benchmarks. Anything cleverer has to beat these to be worth running.</dd>
         <dt>MSTL + ETS</dt>
-        <dd>Classical statistics: split the last 8 weeks into a trend plus daily and weekly cycles, then extend the trend with exponential smoothing. Demand only, no weather.</dd>
+        <dd>Classical statistics: split the last 8 weeks into a trend plus daily and weekly cycles, then extend them forward. Demand only, no weather.</dd>
         <dt>LightGBM (calendar + weather)</dt>
-        <dd>Gradient-boosted decision trees, the workhorse of forecasting competitions. Learns from 2019 onwards how demand on a given half-hour departs from its recent average,
-          given the weather forecast, solar radiation, day of week and public holidays.</dd>
-        <dt>LSTM (seq2seq)</dt>
-        <dd>A small recurrent neural network trained from scratch: one LSTM reads the last week, a second walks through the next two days using the weather forecast and calendar.</dd>
-        <dt>Chronos-2 (foundation model)</dt>
-        <dd>Amazon's pretrained time-series transformer (2025). It has never been trained on this data: it reads the last 12 weeks of demand with weather and holidays
-          and forecasts "zero-shot", the way a language model answers without fine-tuning.</dd>
-        <dt>Timestral (foundation model)</dt>
-        <dd>Mistral's pretrained time-series model (October 2026, the 209-million-parameter version), also zero-shot and given exactly the same inputs as Chronos-2,
-          so the two compare like for like. Mistral reports it tops the public forecasting benchmarks; this is an independent test on one series.</dd>
-        <dt>AEMO's own forecast (the reference)</dt>
-        <dd>What the market operator itself expected: its pre-dispatch run issued at about 23:30 for the next 28 hours, then the 50% probability-of-exceedance
-          demand from its last ST PASA run before midnight. AEMO's forecasters have far more to work with (many weather stations, rooftop solar and
-          large-load models, and constant updates), so this is the bar to aim at, not a fair fight.</dd>
+        <dd>Gradient-boosted decision trees, the workhorse of forecasting competitions: hundreds of small if-then rules, learned from 2019 onwards,
+          for how demand shifts with temperature, sunshine, day of week and public holidays.</dd>
+        <dt>LSTM</dt>
+        <dd>A small neural network trained from scratch: one part reads the last week, another walks through the next two days using the weather forecast and calendar.</dd>
+        <dt>Chronos-2 (AI foundation model)</dt>
+        <dd>Amazon's pretrained time-series model (2025). It has never been trained on this data: it reads the last 12 weeks of demand with weather and holidays
+          and forecasts "zero-shot", the way a chatbot answers a question it was never specifically taught.</dd>
+        <dt>Timestral (AI foundation model)</dt>
+        <dd>Mistral's pretrained time-series model (October 2026, the 209-million-parameter version), given exactly the same inputs as Chronos-2.
+          Mistral reports it tops the public forecasting benchmarks; this is an independent test on one series. It came out after the backtest year,
+          so it may have seen this data in training; its live record is the cleaner test.</dd>
         <dt>Average of LightGBM and Chronos-2</dt>
         <dd>A simple ensemble: the two make different kinds of mistakes, so their average is often better than either.</dd>
+        <dt>AEMO's own forecast (the reference)</dt>
+        <dd>What the market operator itself expected: its pre-dispatch forecast from about 23:30 for the next 28 hours, then the middle estimate
+          (the one demand is equally likely to land above or below) from its week-ahead ST PASA forecast of about 22:00. AEMO's forecasters have
+          far more to work with (many weather stations, rooftop solar and large-load models, and constant updates), so this is the bar to aim at,
+          not a fair fight.</dd>
       </dl>
     </section>
 
     <section class="panel" aria-labelledby="live-title">
       <h2 id="live-title">Live track record</h2>
-      <p class="meta">Forecasts logged since the service started, scored once the actual demand is in.</p>
-      <div class="table-wrap"><table id="live-table"></table></div>
+      <p class="meta">Every forecast since 29 Oct 2026, logged when it's made and scored once the actual demand is in. Models with under a week of scores
+        are greyed out: too few days to compare.</p>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Live scores table"><table id="live-table"></table></div>
+      <p class="scroll-hint" hidden>Scroll the table sideways for more →</p>
+      <p class="meta" id="live-status"></p>
     </section>
   </main>
 
@@ -91,10 +167,11 @@
       and <a href="https://nemweb.com.au/Reports/">NEMWEB</a> pre-dispatch and ST PASA reports, region VIC1, © AEMO, used under
       <a href="https://www.aemo.com.au/privacy-and-legal-notices/copyright-permissions">AEMO's copyright permissions</a>. This is an independent project; AEMO has not reviewed or endorsed it.</p>
     <p>Weather: <a href="https://open-meteo.com/">Weather data by Open-Meteo.com</a> (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>), including
-      ERA5 reanalysis (contains modified Copernicus Climate Change Service information). Forecast model:
+      ERA5 reanalysis (contains modified Copernicus Climate Change Service information). Foundation models:
       <a href="https://huggingface.co/amazon/chronos-2">Chronos-2</a> by Amazon (Apache 2.0) and
       <a href="https://huggingface.co/mistralai/Timestral-209M">Timestral-209M</a>, © 2026 Mistral AI
-      (<a href="https://huggingface.co/mistralai/Timestral-209M/blob/main/LICENSE">Modified MIT licence</a>). Code: <a href="https://github.com/ryanward-io/vic-demand-forecast">MIT</a>.</p>
+      (<a href="https://huggingface.co/mistralai/Timestral-209M/blob/main/LICENSE">Modified MIT licence</a>).
+      <a href="https://github.com/ryanward-io/vic-demand-forecast">Source code on GitHub</a> (MIT).</p>
     <p>Times are NEM time (AEST, no daylight saving). Forecasts are for interest only, not operational or trading use.</p>
   </footer>
 </body>

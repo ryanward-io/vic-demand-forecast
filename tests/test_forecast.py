@@ -70,9 +70,12 @@ def test_daily_job_and_api(series, tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline, "ENSEMBLES", {"ens": ("Average", ["lightgbm", "lstm"])})
     latest = pipeline.run_daily(tmp_path, cheap_models())
     assert (tmp_path / "fitted" / "lightgbm.pkl").exists()
-    pipeline.run_daily(tmp_path, cheap_models())  # rerunning the same day must not duplicate the log
+    log = pd.read_parquet(tmp_path / "forecast_log.parquet")
+    again = pipeline.run_daily(tmp_path, cheap_models())  # rerunning the same day must not duplicate or replace the log
     n_models = len(cheap_models()) + 1
     assert len(pd.read_parquet(tmp_path / "forecast_log.parquet")) == n_models * 2 * DAY
+    pd.testing.assert_frame_equal(pd.read_parquet(tmp_path / "forecast_log.parquet"), log)
+    assert again["issued"] == latest["issued"] and again["forecasts"] == latest["forecasts"]
     assert len(latest["forecasts"]) == n_models and all(len(f) == 2 * DAY for f in latest["forecasts"].values())
 
     client = TestClient(create_app(tmp_path))
@@ -80,6 +83,54 @@ def test_daily_job_and_api(series, tmp_path, monkeypatch):
     assert body.status_code == 200 and body.json()["origin"] == latest["origin"]
     assert body.headers["access-control-allow-origin"] == "https://ryanward.dev"
     assert "access-control-allow-origin" not in client.get("/forecast", headers={"Origin": "https://evil.example"}).headers
+    assert "max-age" in body.headers["cache-control"]
+    assert client.get("/openapi.json").status_code == 404
+
+
+def test_api_refreshes_at_most_every_few_minutes(tmp_path):
+    (tmp_path / "latest.json").write_text('{"origin": "a"}')
+    calls = []
+    client = TestClient(create_app(tmp_path, refresh=lambda: calls.append(1)))
+    for _ in range(5):
+        assert client.get("/forecast").json() == {"origin": "a"}
+    assert len(calls) == 1
+
+
+def test_api_survives_a_failed_refresh(tmp_path):
+    (tmp_path / "latest.json").write_text('{"origin": "a"}')
+    def boom():
+        raise RuntimeError("volume busy")
+    assert TestClient(create_app(tmp_path, refresh=boom)).get("/forecast").status_code == 200
+
+
+def test_late_forecasts_are_flagged():
+    log = pd.DataFrame({"origin": pd.to_datetime(["2026-11-12 00:00", "2026-11-12 00:00"]),
+                        "issued": ["2026-11-11T15:00:23+00:00", "2026-11-12T01:00:00+00:00"]})  # 01:00 and 11:00 NEM time
+    assert list(pipeline._late(log)) == [False, True]
+
+
+def _results(errors: dict[str, list[float]]) -> pd.DataFrame:
+    """One row per (model, day): forecast = actual + error, all at step 1."""
+    rows = [{"model": m, "origin": pd.Timestamp("2026-01-01") + pd.Timedelta(days=i), "step": 1, "actual": 1000.0,
+             "forecast": 1000.0 + e} for m, es in errors.items() for i, e in enumerate(es) if e is not None]
+    return pd.DataFrame(rows)
+
+
+def test_relative_pairs_rows_with_the_base():
+    # "b" only has the first two days, where the base missed by 100; on all four days the base averages 250.
+    r = _results({"naive_week": [100, 100, 400, 400], "a": [50, 50, 200, 200], "b": [50, 50, None, None]})
+    rel = backtest.relative(r)
+    assert rel["a"] == 50 and rel["b"] == 50 and rel["naive_week"] == 100
+
+
+def test_compare_reports_difference_and_ties():
+    rng = np.random.default_rng(1)
+    base = rng.uniform(100, 300, 200)
+    clear = backtest.compare(_results({"a": list(base - 50), "b": list(base)}), "a", "b")
+    assert clear["mw"] == 50 and not clear["tie"] and clear["a_better_pct"] == 100
+    noise = rng.normal(0, 30, 200)
+    tie = backtest.compare(_results({"a": list(base + noise), "b": list(base)}), "a", "b")
+    assert tie["tie"] and tie["lo"] < 0 < tie["hi"]
 
 
 def test_aemo_csv_parser_reads_one_table():

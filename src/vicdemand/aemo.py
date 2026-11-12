@@ -3,8 +3,10 @@
 AEMO publishes two forecasts that cover our 48 hours:
 - Pre-dispatch (PD): run every half-hour; the run issued about 23:30 forecasts every half-hour from midnight to 04:00 the
   morning after next (56 of our 96 steps). Its TOTALDEMAND uses the same definition as the actual demand we forecast.
-- ST PASA: run every two hours, half-hourly demand for the next 7 days at 10/50/90% probability of exceedance (POE).
-  We use the 50% POE value from the last run issued before midnight, for the steps pre-dispatch doesn't reach.
+- ST PASA: run hourly, half-hourly demand for the next 7 days at 10/50/90% probability of exceedance (POE).
+  We use the 50% POE value from the run issued about 22:00 (or the latest one before it), for the steps pre-dispatch
+  doesn't reach. AEMO documents pre-dispatch TOTALDEMAND as the same measure as actual demand; we haven't confirmed that
+  ST PASA's DEMAND50 is defined identically, and its bias does shift where the two meet (see the page).
 
 Both live on NEMWEB: the last ~2 weeks as one zip per run under Reports/Current, older runs bundled into big weekly (PD,
 ~285 MB) or monthly (ST PASA, ~200 MB) zips under Reports/Archive. We read only the one run we need out of an archive
@@ -33,7 +35,8 @@ STEP = pd.Timedelta("30min")
 
 
 def _get(url: str, **kw) -> httpx.Response:
-    """GET with polite retries: NEMWEB answers 403/429 when it thinks we're asking too fast."""
+    """GET with polite, slowing retries: NEMWEB answers 403/429 when it thinks we're asking too fast, so we back off
+    (15 s, 1 min, 3 min) and give up after that rather than keep asking."""
     for wait in (0, 15, 60, 180):
         time.sleep(wait)
         r = _client().get(url, **kw)
@@ -146,7 +149,7 @@ def predispatch(origin: pd.Timestamp) -> pd.Series | None:
 
 def stpasa(origin: pd.Timestamp) -> pd.Series | None:
     """VIC1 50% POE demand from the last ST PASA run issued before `origin`."""
-    for hours_back in range(2, 13, 1):  # runs are every 2 hours; allow for a missed one or two
+    for hours_back in range(2, 13, 1):  # the ~22:00 run, or earlier if that one's missing
         run = origin - pd.Timedelta(hours=hours_back)
         text = _run_csv("PUBLIC_STPASA_", run.strftime("%Y%m%d%H%M"), STPASA_DIR)
         if text is None:

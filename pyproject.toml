@@ -1,7 +1,7 @@
 [project]
 name = "vicdemand"
 version = "0.1.0"
-description = "Add your description here"
+description = "Nightly half-hourly forecasts of Victorian electricity demand from nine models, scored against actuals and AEMO"
 readme = "README.md"
 authors = [
     { name = "Ryan Ward", email = "wardyryan1@gmail.com" }

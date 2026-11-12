@@ -4,7 +4,7 @@ Everything lives under one data directory (a Modal Volume in production, ./data 
 
     cache/                 downloaded AEMO and Open-Meteo files
     fitted/                trained models (LightGBM, LSTM), refitted once a week
-    forecast_log.parquet   every forecast ever issued (the live track record; never rewritten)
+    forecast_log.parquet   every forecast ever issued (the live track record: rows are only ever added, never replaced)
     latest.json            what the web page shows
 """
 
@@ -23,6 +23,14 @@ from .models import DAY, ENSEMBLES, Model, all_models, ensemble
 
 HISTORY_DAYS = 7  # actuals shown on the chart before the forecast starts
 REFIT_DAYS = 7  # retrain learned models weekly: a day's extra data changes little, and training is the slow part
+# The nightly run issues about an hour after its midnight origin. A forecast issued much later (a manual rerun, or a night
+# when AEMO's file lagged and the origin fell back a day) has seen more of the day it forecasts, so it isn't scored.
+MAX_LATE = pd.Timedelta(hours=3)
+
+
+def _late(log: pd.DataFrame) -> pd.Series:
+    issued = pd.to_datetime(log["issued"], utc=True).dt.tz_convert(data.NEM_TZ).dt.tz_localize(None)
+    return issued - pd.to_datetime(log["origin"]) > MAX_LATE
 
 
 def _points(s: pd.Series) -> list:
@@ -72,17 +80,25 @@ def run_daily(root: Path, models: dict[str, Model] | None = None) -> dict:
 
     log_path = root / "forecast_log.parquet"
     log = pd.concat([pd.read_parquet(log_path), new]) if log_path.exists() else new
-    # Rerunning on the same day replaces that day's forecast rather than double counting it.
-    log = log.drop_duplicates(["model", "origin", "step"], keep="last")
+    # Rerunning on the same day keeps the forecast that was logged first: the track record is what was said at the time,
+    # not a later, better-informed redo.
+    log = log.drop_duplicates(["model", "origin", "step"], keep="first")
     log.to_parquet(log_path)
+    # Show what was logged for this origin, so the chart and the track record never disagree after a rerun. A range is
+    # only shown when it belongs to the logged forecast (this run's), since ranges aren't logged.
+    today = log[log["origin"] == origin]
+    ranges = {name: f for name, f in forecasts.items() if "low" in f.attrs and (today.loc[today["model"] == name, "issued"] == issued).all()}
+    forecasts = {name: today[today["model"] == name].set_index("time")["forecast"].rename(name) for name in forecasts}
 
-    scored = log.assign(actual=demand.reindex(log["time"]).to_numpy()).dropna(subset=["actual"])
+    on_time = log[~_late(log)]
+    scored = on_time.assign(actual=demand.reindex(on_time["time"]).to_numpy()).dropna(subset=["actual"])
     live = backtest.score(scored).reset_index().to_dict("records") if len(scored) else []
 
     start = origin - pd.Timedelta(days=HISTORY_DAYS)
     end = forecasts[next(iter(forecasts))].index[-1]
     latest = {
-        "issued": issued,
+        "issued": today["issued"].min(),  # when the forecasts shown were first made (a rerun doesn't move this)
+        "late": bool(_late(today).any()),  # made well after the origin, so left out of the track record
         "origin": origin.strftime("%Y-%m-%dT%H:%M"),
         "region": data.REGION,
         "steps_per_day": DAY,
@@ -93,8 +109,10 @@ def run_daily(root: Path, models: dict[str, Model] | None = None) -> dict:
         # Forecast ranges (e.g. Chronos-2's 10-90% quantiles): {model: [[time, low, high], ...]}
         "ranges": {name: [[t.strftime("%Y-%m-%dT%H:%M"), round(float(lo), 1), round(float(hi), 1)]
                           for t, lo, hi in zip(f.index, f.attrs["low"], f.attrs["high"])]
-                   for name, f in forecasts.items() if "low" in f.attrs},
+                   for name, f in ranges.items()},
         "live_score": live,
+        # Each model's live miss as a % of "same day last week", on the same half-hours (see backtest.relative).
+        "live_relative": backtest.relative(scored) if len(scored) else {},
     }
     (root / "latest.json").write_text(json.dumps(latest))
     return latest

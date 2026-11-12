@@ -16,7 +16,8 @@ import pandas as pd
 REGION = "VIC1"
 # AEMO's aggregated price and demand files, one CSV per region per month (updated daily for the current month).
 AEMO_URL = "https://www.aemo.com.au/aemo/data/nem/priceanddemand/PRICE_AND_DEMAND_{ym}_{region}.csv"
-# AEMO blocks requests without a browser-like user agent.
+# AEMO's site turns away requests with a library's default user agent. Ours says what the project is and where it lives,
+# and we fetch one small file a night.
 HEADERS = {"User-Agent": "Mozilla/5.0 (vic-demand-forecast; https://ryanward.dev)"}
 
 # Melbourne CBD. Open-Meteo: free, no key, CC BY 4.0. "Australia/Brisbane" is UTC+10 with no DST, i.e. NEM time.
@@ -71,7 +72,7 @@ def load_demand(cache: Path, today: date | None = None) -> pd.Series:
 # "behind the meter": a sunny day pushes midday grid demand down. Radiation is the mean over the preceding hour.
 WEATHER = {"temperature_2m": "temp", "shortwave_radiation": "solar"}
 PREVIOUS_RUNS_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
-FORECASTS_FROM = "2023-01-01"  # archived forecasts are complete from here
+FORECASTS_FROM = "2023-01-01"  # ask from here; Open-Meteo's previous-runs archive is complete from about January 2024
 
 
 def _open_meteo(url: str, params: dict, variables: dict[str, str] = WEATHER) -> pd.DataFrame:
@@ -117,9 +118,11 @@ def load_weather(cache: Path, today: date | None = None) -> pd.DataFrame:
 def load_weather_forecasts(cache: Path, today: date | None = None) -> dict[int, pd.DataFrame]:
     """What the weather forecast *said* 1 and 2 days before each half-hour, from FORECASTS_FROM on: {1: df, 2: df}.
 
-    Open-Meteo's previous-runs archive keeps, for every hour, the value from the model run about N days earlier. A backtest
-    standing at midnight uses the 1-day-old forecast for "today" and the 2-day-old one for "tomorrow": both were issued
-    before midnight, so nothing leaks, and they are if anything a little staler than what a live forecast gets.
+    Open-Meteo's previous-runs archive keeps, for every hour, the value predicted about N days (N x 24 hours) earlier. A
+    backtest standing at midnight uses the 1-day-old forecast for "today" and the 2-day-old one for "tomorrow". These were
+    made roughly a day or two before each hour, so for nearly every hour they predate midnight; Open-Meteo doesn't say how
+    long a run takes to publish, so for the last hours of "today" a run might have come out shortly after midnight. They
+    are otherwise staler than what a live forecast gets, which is why the backtest is a little harder than live.
     """
     today = today or date.today()
     path = cache / f"weather_forecasts_{today.strftime('%Y%m')}.parquet"

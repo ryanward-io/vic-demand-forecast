@@ -1,0 +1,11 @@
+# GitHub Pages publishes this repo as a site. Only the page itself needs to be on it: index.html, assets/ and results/.
+exclude:
+  - README.md
+  - LICENSE
+  - src/
+  - scripts/
+  - tests/
+  - modal_app.py
+  - dev.py
+  - pyproject.toml
+  - uv.lock

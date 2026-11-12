@@ -78,4 +78,35 @@ def score(results: pd.DataFrame) -> pd.DataFrame:
         "rmse": g["err"].apply(lambda e: np.sqrt((e ** 2).mean())),
         "mape": g.apply(lambda d: (d["err"].abs() / d["actual"]).mean() * 100, include_groups=False),
         "days": g["origin"].nunique(),
+        "n": g["err"].count(),  # half-hours scored: lower than days * 48 when a source was missing some
     }).round(2)
+
+
+def relative(results: pd.DataFrame, base: str = "naive_week") -> dict[str, float]:
+    """Each model's total miss as a percentage of `base`'s, over the two days, on exactly the half-hours both forecast.
+    50 means it missed by half as much as the lazy guess. Pairing the rows keeps a model with gaps (or few live days)
+    from being compared with the base on a different set of days."""
+    err = results.assign(err=(results["forecast"] - results["actual"]).abs()).pivot_table(
+        index=["origin", "step"], columns="model", values="err")
+    if base not in err:
+        return {}
+    out = {}
+    for m in err.columns:
+        both = err[[base] if m == base else [m, base]].dropna()
+        if len(both):
+            out[m] = round(float(100 * both[m].sum() / both[base].sum()), 1)
+    return out
+
+
+def compare(results: pd.DataFrame, a: str, b: str, n_boot: int = 4000, seed: int = 0) -> dict:
+    """How much smaller `a`'s average miss is than `b`'s (MW, over the two days), with a 95% paired bootstrap interval
+    over origins, and the share of days `a` was closer. A positive `mw` means `a` is better. The interval resamples whole
+    days, because errors within a day are strongly correlated."""
+    per_day = (results.assign(err=(results["forecast"] - results["actual"]).abs())
+               .pivot_table(index="origin", columns="model", values="err", aggfunc="mean")[[a, b]].dropna())
+    diff = (per_day[b] - per_day[a]).to_numpy()
+    rng = np.random.default_rng(seed)
+    boots = diff[rng.integers(0, len(diff), (n_boot, len(diff)))].mean(axis=1)
+    lo, hi = np.percentile(boots, [2.5, 97.5])
+    return {"a": a, "b": b, "mw": round(float(diff.mean()), 1), "lo": round(float(lo), 1), "hi": round(float(hi), 1),
+            "a_better_pct": round(float((diff > 0).mean() * 100), 0), "days": int(len(diff)), "tie": bool(lo <= 0 <= hi)}

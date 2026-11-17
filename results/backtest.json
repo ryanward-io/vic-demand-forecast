@@ -3,8 +3,8 @@
  "end": "2026-09-28",
  "weather": "archived forecasts (Open-Meteo previous runs)",
  "run": {
-  "at": "2026-11-12T11:57:07+00:00",
-  "commit": "6c50395",
+  "at": "2026-11-17T11:46:00+00:00",
+  "commit": "7936312",
   "command": "uv run python scripts/backtest.py --start 2025-10-01 --end 2026-09-28"
  },
  "models": [
@@ -23,6 +23,10 @@
   {
    "name": "mstl",
    "label": "MSTL + ETS"
+  },
+  {
+   "name": "arima",
+   "label": "MSTL + ARIMA (weather)"
   },
   {
    "name": "lightgbm",
@@ -67,6 +71,24 @@
    "mape": 4.39,
    "days": 363,
    "n": 17384
+  },
+  {
+   "model": "arima",
+   "lead": "today",
+   "mae": 379.77,
+   "rmse": 557.59,
+   "mape": 8.31,
+   "days": 363,
+   "n": 17424
+  },
+  {
+   "model": "arima",
+   "lead": "tomorrow",
+   "mae": 462.28,
+   "rmse": 635.37,
+   "mape": 10.02,
+   "days": 363,
+   "n": 17424
   },
   {
    "model": "chronos2",
@@ -233,6 +255,7 @@
  ],
  "relative": {
   "aemo": 33.3,
+  "arima": 72.1,
   "chronos2": 46.8,
   "ensemble": 41.8,
   "lightgbm": 45.1,
@@ -323,6 +346,26 @@
    "a_better_pct": 74.0,
    "days": 363,
    "tie": false
+  },
+  {
+   "a": "arima",
+   "b": "mstl",
+   "mw": 17.3,
+   "lo": 3.0,
+   "hi": 31.6,
+   "a_better_pct": 54.0,
+   "days": 363,
+   "tie": false
+  },
+  {
+   "a": "lightgbm",
+   "b": "arima",
+   "mw": 157.9,
+   "lo": 141.3,
+   "hi": 174.2,
+   "a_better_pct": 85.0,
+   "days": 363,
+   "tie": false
   }
  ],
  "ranges": [
@@ -411,6 +454,66 @@
    "model": "aemo",
    "month": "2026-09",
    "mae": 204.8
+  },
+  {
+   "model": "arima",
+   "month": "2025-10",
+   "mae": 461.4
+  },
+  {
+   "model": "arima",
+   "month": "2025-11",
+   "mae": 426.2
+  },
+  {
+   "model": "arima",
+   "month": "2025-12",
+   "mae": 505.3
+  },
+  {
+   "model": "arima",
+   "month": "2026-01",
+   "mae": 543.6
+  },
+  {
+   "model": "arima",
+   "month": "2026-02",
+   "mae": 569.7
+  },
+  {
+   "model": "arima",
+   "month": "2026-03",
+   "mae": 423.1
+  },
+  {
+   "model": "arima",
+   "month": "2026-04",
+   "mae": 284.7
+  },
+  {
+   "model": "arima",
+   "month": "2026-05",
+   "mae": 344.2
+  },
+  {
+   "model": "arima",
+   "month": "2026-06",
+   "mae": 376.7
+  },
+  {
+   "model": "arima",
+   "month": "2026-07",
+   "mae": 326.6
+  },
+  {
+   "model": "arima",
+   "month": "2026-08",
+   "mae": 384.8
+  },
+  {
+   "model": "arima",
+   "month": "2026-09",
+   "mae": 414.1
   },
   {
    "model": "chronos2",

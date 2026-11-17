@@ -7,6 +7,7 @@ A half-hour is labelled by its end, as AEMO does: 00:30 covers 00:00-00:30.
 from __future__ import annotations
 
 import io
+import time
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -75,9 +76,19 @@ PREVIOUS_RUNS_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
 FORECASTS_FROM = "2023-01-01"  # ask from here; Open-Meteo's previous-runs archive is complete from about January 2024
 
 
-def _open_meteo(url: str, params: dict, variables: dict[str, str] = WEATHER) -> pd.DataFrame:
-    r = httpx.get(url, params={"latitude": LAT, "longitude": LON, "hourly": ",".join(variables), "timezone": NEM_TZ, **params},
-                  timeout=120)
+def _open_meteo(url: str, params: dict, variables: dict[str, str] = WEATHER, waits: tuple[int, ...] = (0, 30, 120, 300)) -> pd.DataFrame:
+    """One Open-Meteo request, retried with growing waits: the API has short outages (timeouts, 500s), and a whole
+    night's forecast shouldn't hang on one of them. A 4xx other than 429 is our mistake, so it isn't retried."""
+    for i, wait in enumerate(waits):
+        time.sleep(wait)
+        try:
+            r = httpx.get(url, params={"latitude": LAT, "longitude": LON, "hourly": ",".join(variables), "timezone": NEM_TZ, **params},
+                          timeout=60)
+            if r.status_code < 500 and r.status_code != 429:
+                break
+        except httpx.TransportError:  # timeouts, failed handshakes, dropped connections
+            if i == len(waits) - 1:
+                raise
     r.raise_for_status()
     h = r.json()["hourly"]
     return pd.DataFrame({ours: h[theirs] for theirs, ours in variables.items()}, index=pd.to_datetime(h["time"]), dtype=float)
@@ -107,7 +118,11 @@ def load_weather(cache: Path, today: date | None = None) -> pd.DataFrame:
         if path.exists() and end == date(year, 12, 31):
             parts.append(pd.read_parquet(path))
             continue
-        df = _open_meteo(ARCHIVE_URL, {"start_date": f"{year}-01-01", "end_date": end.isoformat()})
+        # In quarters: the archive API sometimes fails (500/502) on a long range while short ones still work.
+        quarters = pd.date_range(f"{year}-01-01", end, freq="QS").date
+        df = pd.concat([_open_meteo(ARCHIVE_URL, {"start_date": q.isoformat(),
+                                                  "end_date": min((pd.Timestamp(q) + pd.offsets.QuarterEnd(0)).date(), end).isoformat()})
+                        for q in quarters])
         if end == date(year, 12, 31):
             df.to_parquet(path)
         parts.append(df)

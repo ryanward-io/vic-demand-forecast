@@ -55,7 +55,7 @@ print(ranges.to_string())
 alt = ensemble(results, "ensemble_timestral", ["lightgbm", "timestral"]) if {"lightgbm", "timestral"} <= set(results["model"]) else None
 pool = pd.concat([results, alt]) if alt is not None else results
 pairs = [("ensemble", "lightgbm"), ("ensemble", "chronos2"), ("aemo", "ensemble"), ("chronos2", "lightgbm"),
-         ("timestral", "chronos2"), ("lightgbm", "timestral"), ("ensemble_timestral", "ensemble"), ("lightgbm", "lstm")]
+         ("timestral", "chronos2"), ("lightgbm", "timestral"), ("ensemble_timestral", "ensemble"), ("lightgbm", "lstm"), ("arima", "mstl"), ("lightgbm", "arima")]
 comparisons = [backtest.compare(pool, a, b) for a, b in pairs if {a, b} <= set(pool["model"])]
 for c in comparisons:
     print(c)

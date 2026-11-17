@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://ryanward-io--vic-demand-forecast.us-east.modal.run http://localhost:8002 http://127.0.0.1:8002; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
-  <title>Victorian electricity demand forecast: nine models vs AEMO</title>
+  <title>Victorian electricity demand forecast: ten models vs AEMO</title>
   <meta name="description" content="Half-hourly electricity demand forecasts for Victoria, refreshed nightly, with a year-long backtest of every model against AEMO's own.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Victorian electricity demand forecast: nine models vs AEMO">
+  <meta property="og:title" content="Victorian electricity demand forecast: ten models vs AEMO">
   <meta property="og:description" content="Half-hourly electricity demand forecasts for Victoria, refreshed nightly, with a year-long backtest of every model against AEMO's own.">
   <meta property="og:url" content="https://ryanward.dev/vic-demand-forecast/">
   <meta property="og:image" content="https://ryanward.dev/vic-demand-forecast/assets/og.png">
@@ -17,8 +17,8 @@
   <meta property="og:image:alt" content="A week of Victorian electricity demand, then two days of forecasts from several models, including AEMO's.">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
-  <link rel="stylesheet" href="assets/app.css?v=202611121800">
-  <script src="assets/app.js?v=202611121800" type="module"></script>
+  <link rel="stylesheet" href="assets/app.css?v=202611131200">
+  <script src="assets/app.js?v=202611131200" type="module"></script>
 </head>
 <body>
   <header class="site">
@@ -27,7 +27,7 @@
 
   <main>
     <h1>Victorian electricity demand forecast</h1>
-    <p class="lede">Every night, nine models forecast Victoria's electricity demand for the next 48 hours, from rules of thumb to AI that has
+    <p class="lede">Every night, ten models forecast Victoria's electricity demand for the next 48 hours, from rules of thumb to AI that has
       never seen this data. All are scored against what happened, and against AEMO's own forecast.</p>
 
     <section class="panel" aria-labelledby="chart-title">
@@ -105,6 +105,10 @@
         <li>Timestral, Mistral's newer AI model, also ties with both. Its mistakes look a lot like Chronos-2's, so swapping it into the average gains only
           about <span data-fig="cmp:ensemble_timestral:ensemble">4</span> MW. Its likely range is better (it held the actual demand
           <span data-fig="range:timestral">78</span>% of the time, against Chronos-2's <span data-fig="range:chronos2">74</span>%), but it's also wider.</li>
+        <li>Adding the weather to a classical model helps less than you'd think. MSTL + ARIMA misses by about
+          <span data-fig="cmp:arima:mstl">17</span> MW less than MSTL alone; LightGBM misses by <span data-fig="cmp:lightgbm:arima">158</span> MW
+          less than ARIMA. The classical models repeat the last few weeks' daily shape and can only shift it up or down for the weather;
+          the trees can reshape a day around a hot afternoon. (I chose ARIMA's set-up on 2025 data, before the backtest year.)</li>
         <li id="lstm-finding">The LSTM beats the benchmarks but trails the trees, most of all in winter, which is what I'd expect: on one series of this size, boosted trees usually win.</li>
       </ul>
 
@@ -130,6 +134,9 @@
         <dd>Benchmarks. Anything cleverer has to beat these to be worth running.</dd>
         <dt>MSTL + ETS</dt>
         <dd>Classical statistics: split the last 8 weeks into a trend plus daily and weekly cycles, then extend them forward. Demand only, no weather.</dd>
+        <dt>MSTL + ARIMA (weather)</dt>
+        <dd>The same split into daily and weekly cycles, then ARIMA, the classic statistical forecaster, predicts what's left using the weather
+          forecast and holidays. Demand rises in both heat and cold, so it gets heating and cooling temperatures separately.</dd>
         <dt>LightGBM (calendar + weather)</dt>
         <dd>Gradient-boosted decision trees, the workhorse of forecasting competitions: hundreds of small if-then rules, learned from 2019 onwards,
           for how demand shifts with temperature, sunshine, day of week and public holidays.</dd>

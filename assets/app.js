@@ -15,8 +15,8 @@ const MARGIN = { top: 20, right: 12, bottom: 22, left: 48 };
 // Colour follows the model, never its rank or which models are shown. AEMO's forecast is the reference, so it gets a neutral grey.
 // Every forecast also has its own line pattern, so no two are told apart by colour alone.
 const COLOURS = { aemo: "--reference", ensemble: "--series-1", lightgbm: "--series-2", chronos2: "--series-3", timestral: "--series-7",
-  lstm: "--series-4", mstl: "--series-5", mean_4w: "--series-6", naive_day: "--series-6", naive_week: "--series-6" };
-const DASHES = { aemo: null, ensemble: null, lightgbm: "7 3", chronos2: "2 3", timestral: "10 3 2 3", lstm: "14 4", mstl: "4 2 1 2 1 2",
+  lstm: "--series-4", mstl: "--series-5", arima: "--series-8", mean_4w: "--series-6", naive_day: "--series-6", naive_week: "--series-6" };
+const DASHES = { aemo: null, ensemble: null, lightgbm: "7 3", chronos2: "2 3", timestral: "10 3 2 3", lstm: "14 4", mstl: "4 2 1 2 1 2", arima: "12 3 3 3",
   mean_4w: "5 4", naive_day: "1.5 3", naive_week: "9 3 1.5 3" };
 const WIDTHS = { ensemble: 3, aemo: 2.5 };
 const SHOWN_BY_DEFAULT = ["aemo", "ensemble", "lightgbm", "chronos2", "timestral"];

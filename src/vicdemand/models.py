@@ -15,6 +15,9 @@ benchmarks -> MSTL (classical decomposition + ETS) -> LightGBM with calendar and
 
 from __future__ import annotations
 
+import os
+import warnings
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -82,6 +85,65 @@ class MSTL:
         model = _MSTL(season_length=[DAY, WEEK], trend_forecaster=AutoETS(model="ZZN"))
         mean = model.forecast(y=y, h=horizon)["mean"]
         return pd.Series(mean, index=target_index(origin, horizon), name=self.name)
+
+
+@dataclass
+class ARIMA:
+    """MSTL + ARIMA with weather: MSTL takes out the daily and weekly cycles from the last 8 weeks (as in the MSTL model),
+    then AutoARIMA, with the weather and holidays as regressors, models what's left (the level, its short-term memory,
+    and how far heat, cold and sunshine push demand off its usual shape). One of the two standard classical answers to
+    several seasonal cycles in fpp3 (Hyndman & Athanasopoulos), whose worked example is this very series.
+
+    The other, dynamic harmonic regression (Fourier terms for the cycles inside one ARIMA, no MSTL), was tried first and
+    lost: on weeks from 2025, before the backtest year, it missed by 465 MW in winter against 253 MW for this, because
+    a handful of sine waves can't draw the difference between weekday and weekend mornings. The choice was made on 2025
+    data so the backtest year stayed untouched.
+
+    Temperature enters as heating and cooling degrees (below / above 18 degrees C), because demand rises in both cold and
+    heat, a U shape a straight line in temperature can't capture."""
+
+    name: str = "arima"
+    label: str = "MSTL + ARIMA (weather)"
+    weeks: int = 8
+    base_temp: float = 18.0
+
+    def _regressors(self, times: pd.DatetimeIndex, weather: pd.DataFrame) -> np.ndarray:
+        temp = weather["temp"].reindex(times).interpolate(limit_direction="both").to_numpy()
+        mean_24h = weather["temp"].rolling(DAY, min_periods=1).mean().reindex(times).interpolate(limit_direction="both").to_numpy()
+        heat, cold = np.maximum(temp - self.base_temp, 0), np.maximum(self.base_temp - temp, 0)
+        return np.column_stack([heat, cold, heat ** 2, np.maximum(mean_24h - self.base_temp, 0), np.maximum(self.base_temp - mean_24h, 0),
+                                weather["solar"].reindex(times).fillna(0).to_numpy(), features.holiday_flags(times).astype(float)])
+
+    def forecast(self, demand, weather, origin, horizon):
+        from scipy.linalg import qr
+        from statsforecast.models import MSTL as _MSTL, AutoARIMA
+
+        past = demand.loc[:origin].iloc[-self.weeks * WEEK:]
+        future = target_index(origin, horizon)
+        X, X_future = self._regressors(past.index, weather), self._regressors(future, weather)
+        # A regressor that never varies in the window (no holiday in it, no hot days in winter), or that the others already
+        # add up to, can't be estimated: keep only a linearly independent set (pivoted QR on the centred columns).
+        _, r, order = qr(X - X.mean(axis=0), mode="economic", pivoting=True)
+        diag = np.abs(np.diag(r))
+        keep = np.sort(order[:int((diag > 1e-8 * diag.max()).sum())]) if diag.max() > 0 else np.array([], int)
+        X, X_future = X[:, keep], X_future[:, keep]
+        model = _MSTL(season_length=[DAY, WEEK], trend_forecaster=AutoARIMA(seasonal=False, max_p=3, max_q=3, approximation=True))
+        with warnings.catch_warnings():
+            # The stepwise search tries many candidate orders and some don't converge; it moves past them.
+            warnings.filterwarnings("ignore", message="possible convergence problem")
+            mean = model.forecast(y=past.to_numpy(dtype=float), h=horizon, X=X if keep.size else None,
+                                  X_future=X_future if keep.size else None)["mean"]
+        return pd.Series(mean, index=future, name=self.name)
+
+    def forecast_many(self, cases, horizon):
+        """The backtest's batch call: each origin's fit is independent, so run them on all cores.
+        Only the window each fit needs is sent to the worker processes."""
+        def trim(d, w, o):
+            lo = o - pd.Timedelta(weeks=self.weeks + 1)
+            return d.loc[lo:o], w.loc[lo:o + horizon * STEP], o
+        with ProcessPoolExecutor(max_workers=max(1, (os.cpu_count() or 2) - 2)) as pool:
+            futures = [pool.submit(self.forecast, *trim(d, w, o), horizon) for d, w, o in cases]
+            return [f.result() for f in futures]
 
 
 @dataclass
@@ -223,7 +285,7 @@ def all_models(cache: Path = Path("data/cache")) -> dict[str, Model]:
     from .aemo import AEMOForecast
     from .lstm import LSTM
 
-    return {m.name: m for m in [*BENCHMARKS, MSTL(), LightGBM(), LSTM(), Chronos2(), Timestral(), AEMOForecast(cache=cache / "aemo")]}
+    return {m.name: m for m in [*BENCHMARKS, MSTL(), ARIMA(), LightGBM(), LSTM(), Chronos2(), Timestral(), AEMOForecast(cache=cache / "aemo")]}
 
 
 # Averages of other models' forecasts. Models that make different kinds of mistakes often beat each of them alone.

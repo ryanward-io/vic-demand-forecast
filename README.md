@@ -2,8 +2,8 @@
 
 **Live:** https://ryanward.dev/vic-demand-forecast/
 
-Every night nine models forecast Victoria's half-hourly electricity demand (AEMO region VIC1) for the next 48 hours:
-three simple benchmarks, MSTL + ETS, LightGBM, an LSTM, two zero-shot foundation models (Chronos-2 and Timestral) and an
+Every night ten models forecast Victoria's half-hourly electricity demand (AEMO region VIC1) for the next 48 hours:
+three simple benchmarks, MSTL + ETS, MSTL + ARIMA with weather, LightGBM, an LSTM, two zero-shot foundation models (Chronos-2 and Timestral) and an
 average of LightGBM and Chronos-2. Each forecast is logged and scored against what happened and against AEMO's own
 forecast. A year-long rolling-origin backtest shows how each would have done, not just what it says today.
 
@@ -19,7 +19,7 @@ data, ties with LightGBM trained on seven years of it.
 | Piece | File | What it does |
 | --- | --- | --- |
 | Data | `src/vicdemand/data.py` | AEMO monthly price-and-demand CSVs (5-minute since 2021, averaged to half-hours) and Open-Meteo temperature for Melbourne, cached as parquet |
-| Models | `src/vicdemand/models.py`, `lstm.py`, `features.py` | One interface, `forecast(demand, weather, origin, horizon)`: three benchmarks, MSTL + ETS, LightGBM, an LSTM, Chronos-2 and Timestral (zero-shot foundation models, each with an 80% range), a LightGBM + Chronos-2 average, and AEMO's own forecast (`aemo.py`) as the reference |
+| Models | `src/vicdemand/models.py`, `lstm.py`, `features.py` | One interface, `forecast(demand, weather, origin, horizon)`: three benchmarks, MSTL + ETS, MSTL + ARIMA with weather, LightGBM, an LSTM, Chronos-2 and Timestral (zero-shot foundation models, each with an 80% range), a LightGBM + Chronos-2 average, and AEMO's own forecast (`aemo.py`) as the reference |
 | Backtest | `src/vicdemand/backtest.py`, `scripts/backtest.py` | Every day in the window: stand at midnight, forecast 96 half-hours, score MAE / RMSE / MAPE split into "today" and "tomorrow". Learned models retrain monthly on data up to that day; after the origin, models see the archived weather *forecast*, not what happened |
 | Daily job | `src/vicdemand/pipeline.py` | Refresh data, retrain learned models weekly, forecast with every model, append to the forecast log, rescore the live track record, write `latest.json` |
 | API | `src/vicdemand/api.py` | `GET /forecast` returns `latest.json` |

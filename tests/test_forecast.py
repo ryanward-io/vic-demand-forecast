@@ -6,12 +6,12 @@ from fastapi.testclient import TestClient
 from vicdemand import backtest, pipeline
 from vicdemand.api import create_app
 from vicdemand.lstm import LSTM
-from vicdemand.models import BENCHMARKS, DAY, MSTL, WEEK, LightGBM
+from vicdemand.models import ARIMA, BENCHMARKS, DAY, MSTL, WEEK, LightGBM
 
 
 def cheap_models():
     """Everything except Chronos-2 (a 500 MB download), with the learned models shrunk so tests stay fast."""
-    return {m.name: m for m in [*BENCHMARKS, MSTL(), LightGBM(rounds=20), LSTM(epochs=1, every_hours=24)]}
+    return {m.name: m for m in [*BENCHMARKS, MSTL(), ARIMA(weeks=4), LightGBM(rounds=20), LSTM(epochs=1, every_hours=24)]}
 
 
 @pytest.fixture
@@ -164,3 +164,14 @@ def test_timestral_forecasts_a_range_without_peeking(series):
     tampered = demand.copy()
     tampered.loc[origin + pd.Timedelta("30min"):] = 0
     np.testing.assert_allclose(m.forecast(tampered, weather, origin, 2 * DAY).to_numpy(), f.to_numpy())
+
+
+def test_arima_batch_matches_one_at_a_time(series):
+    """The parallel backtest path must give the same forecasts as the nightly one."""
+    demand, weather = series
+    m = ARIMA(weeks=4)
+    origins = [pd.Timestamp("2026-02-20 00:00"), pd.Timestamp("2026-02-21 00:00")]
+    one = [m.forecast(demand.loc[:o], weather, o, 2 * DAY) for o in origins]
+    many = m.forecast_many([(demand.loc[:o], weather, o) for o in origins], 2 * DAY)
+    for a, b in zip(one, many):
+        np.testing.assert_allclose(a.to_numpy(), b.to_numpy(), rtol=1e-6)
